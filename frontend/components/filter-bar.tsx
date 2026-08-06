@@ -43,35 +43,49 @@ const ElectoralFilter = ({ metric, onFilterChange, availableParties }: { metric:
 };
 
 // --- Sub-componente para Filtro de Rango (PBG) ---
-const RangeFilter = ({ metric, onFilterChange }: { metric: Metrica, onFilterChange: (metricId: number, filter: FiltroRango | null) => void }) => {
-  const min = 0, max = 1000000;
+const RangeFilter = ({ metric, range, onFilterChange }: { metric: Metrica, range?: {min: number, max: number}, onFilterChange: (metricId: number, filter: FiltroRango | null) => void }) => {
+  const min = range?.min ?? 0;
+  const max = range?.max ?? 100;
   const [value, setValue] = useState<[number, number]>([min, max]);
 
+  // Update internal value when dynamic range arrives from parent
+  useEffect(() => {
+    if (range) {
+      setValue([range.min, range.max]);
+    }
+  }, [range]);
+
   const handleValueChange = (newValue: [number, number]) => {
+    // Only update the local UI state for smooth sliding
     setValue(newValue);
-    if (newValue[0] === min && newValue[1] === max) {
+  };
+
+  const handleValueCommit = (committedValue: [number, number]) => {
+    // Actually apply the filter when the user stops dragging
+    if (committedValue[0] === min && committedValue[1] === max) {
       onFilterChange(metric.id, null);
     } else {
       onFilterChange(metric.id, {
         metrica_id: metric.id,
         tipo: "rango",
-        rango: newValue,
+        rango: committedValue,
       });
     }
   };
 
   return (
-    <div className="flex items-center gap-2 w-[300px]">
-      <span className="text-sm font-medium w-[120px] truncate" title={metric.nombre_amigable}>{metric.nombre_amigable}:</span>
+    <div className="flex items-center gap-4 w-[600px]">
+      <span className="text-sm font-medium w-[150px] truncate" title={metric.nombre_amigable}>{metric.nombre_amigable}:</span>
       <Slider
         min={min}
         max={max}
-        step={(max - min) / 100}
+        step={(max - min) / 100 || 1}
         value={value}
         onValueChange={handleValueChange}
+        onValueCommit={handleValueCommit}
         className="flex-1"
       />
-      <span className="text-xs text-muted-foreground w-[80px] text-right">
+      <span className="text-xs font-mono text-muted-foreground w-[150px] text-right">
         {value[0].toLocaleString()}-{value[1].toLocaleString()}
       </span>
     </div>
@@ -87,6 +101,7 @@ interface FilterBarProps {
   filters?: AnyFiltro[];
   onFiltersChange?: (updater: SetStateAction<AnyFiltro[]>) => void;
   availableParties?: string[];
+  metricRanges?: {[metricId: number]: {min: number, max: number}};
 }
 
 export function FilterBar({
@@ -97,7 +112,8 @@ export function FilterBar({
   onSecondaryMetricsChange,
   filters = [],
   onFiltersChange,
-  availableParties = []
+  availableParties = [],
+  metricRanges = {}
 }: FilterBarProps) {
   const [showSecondaryMetricsPopover, setShowSecondaryMetricsPopover] = useState(false)
 
@@ -199,7 +215,7 @@ export function FilterBar({
                 return <ElectoralFilter key={metric.id} metric={metric} onFilterChange={updateOrRemoveFilter} availableParties={availableParties} />;
               }
               if (metric.tipo === TipoMetricaEnum.ECONOMICA) {
-                return <RangeFilter key={metric.id} metric={metric} onFilterChange={updateOrRemoveFilter} />;
+                return <RangeFilter key={metric.id} metric={metric} range={metricRanges[metric.id]} onFilterChange={updateOrRemoveFilter} />;
               }
               return null;
             })}

@@ -70,8 +70,8 @@ export default function MapaElectoralPage() {
       </div>
 
       <div className="border-t">
-        {/* DashboardCharts ahora recibe los datos del municipio seleccionado */}
-        <DashboardCharts selectionData={selectedMunicipioData} />
+        {/* DashboardCharts ahora recibe los datos del municipio seleccionado y la métrica actual */}
+        <DashboardCharts selectionData={selectedMunicipioData} selectedMetricId={selectedMetric} />
       </div>
     </div>
   );
