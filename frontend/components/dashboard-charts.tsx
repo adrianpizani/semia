@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { TrendingUp, Users, Vote, BarChartIcon, ChevronDown } from "lucide-react"
+import { TrendingUp, Users, Vote, BarChartIcon, ChevronDown, FileText } from "lucide-react"
 import {
   Bar,
   BarChart,
@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
+import { useRouter } from "next/navigation"
 
 // --- Tipos ---
 interface SelectionData {
@@ -31,6 +32,8 @@ interface SelectionData {
 
 interface DashboardChartsProps {
   selectionData: SelectionData | null;
+  selectedMetricId?: number | null;
+  selectedMetricId2?: number | null;
 }
 
 // --- Datos Estáticos de Ejemplo (se usan si no hay selección) ---
@@ -46,8 +49,9 @@ const defaultPartyVotesData = [
   { party: "Partido C", votes: 3800 },
 ]
 
-export function DashboardCharts({ selectionData }: DashboardChartsProps) {
+export function DashboardCharts({ selectionData, selectedMetricId, selectedMetricId2 }: DashboardChartsProps) {
   const [isExpanded, setIsExpanded] = useState(true) // Dejar expandido por defecto
+  const router = useRouter()
 
   // --- Lógica de Datos Dinámicos ---
   const chartTitle = selectionData 
@@ -58,6 +62,23 @@ export function DashboardCharts({ selectionData }: DashboardChartsProps) {
     ? selectionData.resultados.map(r => ({ party: r.partido, votes: r.votos }))
     : defaultPartyVotesData;
 
+  const handleReportClick = () => {
+    if (selectionData) {
+      const query = new URLSearchParams();
+      query.append("geografia_id", selectionData.geografia_id.toString());
+      if (selectedMetricId) {
+        query.append("metrica_1", selectedMetricId.toString());
+      }
+      if (selectedMetricId2) {
+        query.append("metrica_2", selectedMetricId2.toString());
+      } else {
+        // Temporal para demostración del cruce: si no hay métrica 2 en el mapa, enviamos la métrica 2 (socioeconómica) por defecto
+        query.append("metrica_2", "2"); 
+      }
+      router.push(`/graficos?${query.toString()}`);
+    }
+  };
+
   return (
     <div className="space-y-4 p-6">
       {/* Stats Cards (siguen siendo estáticos por ahora) */}
@@ -65,12 +86,18 @@ export function DashboardCharts({ selectionData }: DashboardChartsProps) {
         {/* ... (código de las 4 tarjetas de estadísticas) ... */}
       </div>
 
-      {/* Toggle Button */}
-      <div className="flex justify-center">
+      {/* Toggle Button y Botón de Reportar */}
+      <div className="flex justify-center gap-4">
         <Button variant="outline" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="gap-2">
           {isExpanded ? "Ocultar" : "Ver"} Gráficos Detallados
           <ChevronDown className={cn("h-4 w-4 transition-transform", isExpanded && "rotate-180")} />
         </Button>
+        {selectionData && (
+          <Button variant="default" size="sm" onClick={handleReportClick} className="gap-2">
+            <FileText className="h-4 w-4" />
+            Reportar Municipio
+          </Button>
+        )}
       </div>
 
       {/* Detailed Charts */}

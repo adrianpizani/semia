@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useCallback, SetStateAction } from "react"
 import dynamic from 'next/dynamic';
+import { useRouter } from "next/navigation"
 import { FilterBar } from "@/components/filter-bar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { FileText } from "lucide-react"
 import { getMetricas, getElectoralData, getGenericMetricData } from "@/lib/api"
 import { Metrica, TipoMetricaEnum, GenericData, AnyFiltro } from "@/lib/types"
 
@@ -39,6 +42,25 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [secondaryMetricsData, setSecondaryMetricsData] = useState<{[metricId: number]: GenericData[]}>({});
   const [availableParties, setAvailableParties] = useState<string[]>([]);
+  const [metricRanges, setMetricRanges] = useState<{[metricId: number]: {min: number, max: number}}>({});
+  const router = useRouter();
+
+  const handleReportClick = useCallback(() => {
+    if (selectedMunicipio) {
+      const query = new URLSearchParams();
+      query.append("geografia_id", selectedMunicipio.id.toString());
+      if (selectedPrimaryMetric) {
+        query.append("metrica_1", selectedPrimaryMetric.toString());
+      }
+      if (selectedSecondaryMetrics.length > 0) {
+        query.append("metrica_2", selectedSecondaryMetrics[0].toString());
+      } else {
+        // Por defecto para demostración si no hay secundaria seleccionada
+        query.append("metrica_2", "2"); 
+      }
+      router.push(`/graficos?${query.toString()}`);
+    }
+  }, [selectedMunicipio, selectedPrimaryMetric, selectedSecondaryMetrics, router]);
 
   // Fetch active metrics on mount
   useEffect(() => {
@@ -120,6 +142,17 @@ export default function DashboardPage() {
           try {
             const data = await getGenericMetricData(metricId, filters);
             newSecondaryMetricsData[metricId] = data;
+
+            // Calculate min/max for this metric
+            if (data && data.length > 0) {
+              const values = data.map(d => d.valor).filter((v): v is number => v !== null);
+              if (values.length > 0) {
+                setMetricRanges(prev => ({
+                  ...prev,
+                  [metricId]: { min: Math.min(...values), max: Math.max(...values) }
+                }));
+              }
+            }
           } catch (error) {
             console.error(`Error fetching data for secondary metric ${metricId}:`, error);
             newSecondaryMetricsData[metricId] = [];
@@ -185,6 +218,7 @@ export default function DashboardPage() {
         filters={filters}
         onFiltersChange={handleFiltersChange}
         availableParties={availableParties}
+        metricRanges={metricRanges}
       />
       <div className="flex flex-1 gap-4 overflow-hidden p-4">
         <div className="flex-[3] overflow-hidden rounded-lg border border-border">
@@ -224,6 +258,14 @@ export default function DashboardPage() {
               ) : (
                 <div className="text-sm text-muted-foreground">
                   {selectedMunicipio ? "No hay datos de resultados para este municipio." : "Los resultados del municipio seleccionado aparecerán aquí."}
+                </div>
+              )}
+              {selectedMunicipio && (
+                <div className="pt-4 mt-2 border-t">
+                  <Button className="w-full gap-2" onClick={handleReportClick}>
+                    <FileText className="h-4 w-4" />
+                    Reportar Municipio
+                  </Button>
                 </div>
               )}
             </CardContent>
