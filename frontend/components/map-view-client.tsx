@@ -69,10 +69,9 @@ export default function MapViewClient({
             )}
           </LayersControl.BaseLayer>
 
-          <LayersControl.Overlay checked name="Circuitos Electorales">
+          <LayersControl.Overlay name="Circuitos Electorales">
             {circuitosGeoJSON && (
               <GeoJSON
-                key={`circuitos-layer-${selectedMunicipio?.id || 'none'}-${selectedCircuito?.id || 'none'}`}
                 data={circuitosGeoJSON}
                 style={styleCircuito}
                 onEachFeature={onEachFeatureCircuito}
