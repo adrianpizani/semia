@@ -39,5 +39,21 @@ services:
     ports:
       - "6380:6379"
 
+  # --- Servicio 5: El Frontend (Next.js) ---
+  frontend:
+    build: ./frontend
+    container_name: pba_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      # Dentro de la red de Docker "localhost" no llega al backend,
+      # por eso apuntamos al nombre del servicio.
+      BACKEND_URL: http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Evita que el node_modules del host pise el del contenedor
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:

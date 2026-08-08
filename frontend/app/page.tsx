@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, SetStateAction } from "react"
 import dynamic from 'next/dynamic';
 import { useRouter } from "next/navigation"
 import { FilterBar } from "@/components/filter-bar"
+import { DashboardCharts } from "@/components/dashboard-charts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { FileText, MapPin } from "lucide-react"
@@ -313,6 +314,11 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           ))}
+
+          {/* Distribución de votos por partido para el municipio seleccionado. */}
+          {selectedMunicipioData && (
+            <DashboardCharts selectionData={selectedMunicipioData} />
+          )}
         </div>
       </div>
     </div>

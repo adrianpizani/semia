@@ -9,6 +9,8 @@ Documento vivo que unifica el estado actual, los bugs conocidos, las decisiones 
 
 **Sesión de planificación actual (6 de agosto de 2026):** se reactiva el proyecto. Orientación consolidada: demo electoral martes → auth + deploy AWS + CI/CD → visualización analítica → fuentes externas → microservicio IA en horizonte largo.
 
+**Sesión del 8 de agosto de 2026:** se elimina la ruta `/mapa-electoral` por duplicación con `/` (lógica replicada de mapa, hooks y handlers que generaba regresiones con cada fix). `DashboardCharts` se reduce a su BarChart dinámico de distribución de votos y se integra en `app/page.tsx`. La ruta `/` queda como única superficie del dashboard.
+
 ---
 
 ## 📌 Resumen ejecutivo
@@ -136,9 +138,10 @@ Cuatro conjuntos de datos hardcodeados marcados como "Ejemplo" en gris:
 ### 🟢 Menores
 
 - `graficos/page.tsx` consulta datos para todos los municipios en cada visita (no cachea ni pagina).
-- `mapa-electoral/page.tsx` tiene `selectedMetric` inicial hardcodeado en `1` ("Temporalmente en 1 para pruebas").
+- ~~`mapa-electoral/page.tsx` tiene `selectedMetric` inicial hardcodeado en `1` ("Temporalmente en 1 para pruebas").~~ **Resuelto (8-ago-2026):** ruta `/mapa-electoral` eliminada por duplicación con `/`.
 - Logs de depuración (`print("--- DEPURANDO INCOMPATIBILIDAD GEOGRÁFICA ---")`) dentro de `generic_csv_processor.py` — limpiar para producción.
 - `useMapView`: tooltip de municipio usa `feature.properties.nombre`, pero el partido del circuito se matchea con `feature.properties.departamen` — depende de cómo vienen los GeoJSON de origen.
+- `useMapView` aún conserva `console.log` de depuración en handlers de click (líneas 174 y 230).
 
 ---
 
@@ -156,9 +159,9 @@ Cuatro conjuntos de datos hardcodeados marcados como "Ejemplo" en gris:
 ### Cambios por archivo
 
 - `frontend/hooks/use-map-view.ts`: firma ampliada, matching por `parent_id`, handlers de hover/click de circuitos (`selectedCircuito`), `stopPropagation`, y eliminación del estado `isCircuitosOverlayActive`. Quedan `console.log` de depuración (a limpiar).
-- `frontend/components/map-view-client.tsx`: re-cableado de props al hook, `bubblingMouseEvents={false}`, `key` de la capa de circuitos incluye el circuito seleccionado, y remoción de `MapEvents`.
-- `frontend/app/mapa-electoral/page.tsx` y `frontend/app/page.tsx`: estado y handlers de `selectedCircuito`; se resetea el circuito al cambiar de municipio.
-- `frontend/components/dashboard-charts.tsx` y `frontend/app/page.tsx`: **card indicadora** del circuito seleccionado (muestra el nombre + municipio).
+- `frontend/components/map-view-client.tsx`: re-cableado de props al hook, `bubblingMouseEvents={false}`, y remoción de `MapEvents`. El `key` dinámico de la capa de circuitos se eliminó en la sesión del 8-ago-2026 porque forzaba el `checked` del `LayersControl` cada vez que cambiaba el municipio (la capa se "activaba sola" al hacer click).
+- `frontend/app/mapa-electoral/page.tsx` y `frontend/app/page.tsx`: estado y handlers de `selectedCircuito`; se resetea el circuito al cambiar de municipio. **Nota (8-ago-2026):** `mapa-electoral` fue eliminada por duplicación con `/`.
+- `frontend/components/dashboard-charts.tsx` y `frontend/app/page.tsx`: **card indicadora** del circuito seleccionado (muestra el nombre + municipio). **Nota (8-ago-2026):** `DashboardCharts` se redujo al BarChart dinámico de distribución de votos y se integró en `/`; la card indicadora del circuito vive ahora solo en `app/page.tsx`.
 
 ### Decisión de diseño (Opción B)
 
@@ -189,9 +192,15 @@ El **municipio queda como ancla de datos persistente**: al seleccionar un circui
 
 ### 13 de noviembre de 2025 — Sesión de circuitos
 
-- Los circuitos solo muestran tooltip si pertenecen al municipio seleccionado (interactividad condicional).
+- ~~Los circuitos solo muestran tooltip si pertenecen al municipio seleccionado (interactividad condicional).~~ **Superado por Opción B (7-ago-2026):** los circuitos son interactuables independientemente como capa de contexto; el municipio queda como ancla persistente.
 - Se adopta el patrón **"Lifting State Up"**: el `page.tsx` dueño del estado, componentes hijos sin estado.
 - Centralización de tipos en `frontend/lib/types.ts` para evitar divergencias.
+
+### 8 de agosto de 2026 — Consolidación del dashboard
+
+- Se elimina `/mapa-electoral` por duplicación con `/`. La lógica replicada obligaba a re-verificar cada fix en dos superficies.
+- `DashboardCharts` se reduce a su BarChart dinámico y se integra en `app/page.tsx`. La card indicadora del circuito seleccionado, el botón "Reportar Municipio" y el fallback `metrica_2 = "2"` que vivían duplicados en `DashboardCharts` se consolidan en `app/page.tsx`.
+- Bug del `LayersControl` ("la capa de circuitos se activa sola al clickear un municipio") se corrige eliminando el `key` dinámico y el `checked` hardcodeado en `map-view-client.tsx`. El `styleCircuito` reactivo del hook se encarga del re-styling.
 
 ---
 
@@ -268,6 +277,20 @@ El **municipio queda como ancla de datos persistente**: al seleccionar un circui
   3. Si todo pasa: build de imágenes Docker, push a ECR, deploy al EC2.
 - **Motivación:** poder mostrarle mejoras al cliente de forma continua e instantánea sin deploys manuales.
 - **Decisión:** GitHub Actions (no AWS CodePipeline) porque queremos aprender una herramienta portable.
+
+##### 3.3.1 — Checklist: preparar Docker para producción (pendiente, antes del deploy)
+
+> Nota de la sesión del 8 de agosto de 2026: el `docker-compose.yml` actual (con el `frontend` ya agregado) está pensado para **desarrollo local** (volúmenes montados + `next dev`). No está listo para cloud tal cual. Checklist de lo que hay que ajustar antes de deployar a AWS:
+
+- **Frontend — Dockerfile multi-stage:** `npm ci` → `next build` → `next start` (imagen final liviana). Hoy corre `next dev`.
+- **Backend — Dockerfile de producción:** uvicorn/gunicorn con `--workers N`; hoy corre `uvicorn main:app` sin workers y con volumen montado.
+- **Quitar volúmenes de código** (`./backend/app:/app`, `./frontend:/app`, `- /app/node_modules`) en producción: en cloud no hay directorio del host que montar.
+- **Secretos/credenciales externalizados:** hoy Postgres usa `root`/`root` hardcodeados. Pasar a variables de entorno / `.env` / AWS Secrets Manager; evaluar RDS PostgreSQL+PostGIS en vez de la DB dentro del EC2.
+- **`container_name` fijos** (`pba_db`, `pba_backend`, `pba_frontend`, `pba_cache`): revisar porque chocan al escalar o en orquestadores; evaluar `profiles` para separar dev de prod.
+- **Proxy reverso + TLS:** agregar Nginx (o similar) para HTTPS y enrutar `/` → frontend y `/api` → backend, y que así `BACKEND_URL` en producción sea relativo/seguro.
+- **Persistencia de la DB:** hoy volumen local `postgres_data`; definir estrategia de disco gestionado y backups para el deploy real.
+- **Documentar el deploy AWS:** alcance depende del destino; este checklist aplica a un **VPS / EC2 con Docker Compose**. Para servicios tipo (o K8s) la estrategia cambia.
+- **Recordatorio general:** el frontend usa rewrites de Next (`/api/*` → `BACKEND_URL`); en producción configurar `BACKEND_URL` correctamente (ver `next.config.mjs`).
 
 #### 3.4 — Roles + auditoría + monitoreo
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { Home, Map, FileText, BarChart3, Settings, Upload, TrendingUp } from "lucide-react"
+import { Home, FileText, BarChart3, Settings, Upload, TrendingUp } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -15,7 +15,6 @@ import Link from "next/link"
 
 const menuItems = [
   { title: "Dashboard", url: "/", icon: Home },
-  { title: "Mapa Electoral", url: "/mapa-electoral", icon: Map },
   { title: "Filtros Avanzados", url: "/filtros", icon: FileText },
   { title: "Gestión de Archivos", url: "/archivos", icon: Upload },
   { title: "Análisis y Gráficos", url: "/graficos", icon: BarChart3 },
