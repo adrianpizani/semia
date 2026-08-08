@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { TrendingUp, Users, Vote, BarChartIcon, ChevronDown, FileText } from "lucide-react"
+import { TrendingUp, Users, Vote, BarChartIcon, ChevronDown, FileText, MapPin } from "lucide-react"
 import {
   Bar,
   BarChart,
@@ -34,6 +34,9 @@ interface DashboardChartsProps {
   selectionData: SelectionData | null;
   selectedMetricId?: number | null;
   selectedMetricId2?: number | null;
+  /** Nombre del circuito electorale seleccionado (si lo hay). Se muestra como
+      capa de información adicional sin reemplazar la selección del municipio. */
+  selectedCircuitoName?: string | null;
 }
 
 // --- Datos Estáticos de Ejemplo (se usan si no hay selección) ---
@@ -49,7 +52,7 @@ const defaultPartyVotesData = [
   { party: "Partido C", votes: 3800 },
 ]
 
-export function DashboardCharts({ selectionData, selectedMetricId, selectedMetricId2 }: DashboardChartsProps) {
+export function DashboardCharts({ selectionData, selectedMetricId, selectedMetricId2, selectedCircuitoName }: DashboardChartsProps) {
   const [isExpanded, setIsExpanded] = useState(true) // Dejar expandido por defecto
   const router = useRouter()
 
@@ -81,6 +84,22 @@ export function DashboardCharts({ selectionData, selectedMetricId, selectedMetri
 
   return (
     <div className="space-y-4 p-6">
+      {/* Card de circuito seleccionado: muestra el nombre como capa de contexto,
+          sin reemplazar la selección/ancla del municipio. */}
+      {selectedCircuitoName && (
+        <Card className="border-blue-500 bg-blue-50/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-blue-600" />
+              Circuito seleccionado
+            </CardTitle>
+            <CardDescription className="text-blue-900 font-medium">
+              {selectedCircuitoName}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
       {/* Stats Cards (siguen siendo estáticos por ahora) */}
       <div className="grid gap-4 md:grid-cols-4">
         {/* ... (código de las 4 tarjetas de estadísticas) ... */}

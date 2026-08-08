@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { FilterBar } from "@/components/filter-bar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { FileText } from "lucide-react"
+import { FileText, MapPin } from "lucide-react"
 import { getMetricas, getElectoralData, getGenericMetricData } from "@/lib/api"
 import { Metrica, TipoMetricaEnum, GenericData, AnyFiltro } from "@/lib/types"
 
@@ -38,6 +38,7 @@ export default function DashboardPage() {
   const [selectedSecondaryMetrics, setSelectedSecondaryMetrics] = useState<number[]>([])
   const [filters, setFilters] = useState<AnyFiltro[]>([])
   const [selectedMunicipio, setSelectedMunicipio] = useState<any | null>(null)
+  const [selectedCircuito, setSelectedCircuito] = useState<any | null>(null)
   const [electoralData, setElectoralData] = useState<any | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [secondaryMetricsData, setSecondaryMetricsData] = useState<{[metricId: number]: GenericData[]}>({});
@@ -181,7 +182,17 @@ export default function DashboardPage() {
     } else {
       setSelectedMunicipio(municipio);
     }
+    // Al cambiar de municipio, reseteamos el circuito seleccionado
+    setSelectedCircuito(null);
   }, [selectedMunicipio]);
+
+  const handleCircuitoClick = useCallback((circuito: any) => {
+    if (selectedCircuito && selectedCircuito.id === circuito.id) {
+      setSelectedCircuito(null);
+    } else {
+      setSelectedCircuito(circuito);
+    }
+  }, [selectedCircuito]);
 
   const handleFiltersChange = useCallback((updater: SetStateAction<AnyFiltro[]>) => {
     setFilters(updater);
@@ -226,11 +237,30 @@ export default function DashboardPage() {
             selectedMetric={selectedPrimaryMetric}
             electoralData={electoralData}
             onMunicipioClick={handleMunicipioClick}
+            onCircuitoClick={handleCircuitoClick}
             isLoading={isLoading}
             selectedMunicipio={selectedMunicipio}
+            selectedCircuito={selectedCircuito}
           />
         </div>
         <div className="flex-[2] space-y-4 overflow-y-auto">
+          {/* Indicador del circuito seleccionado: muestra el nivel jerárquico actual
+              (Partido → Circuito) como capa de contexto, sin reemplazar el municipio. */}
+          {selectedCircuito && (
+            <Card className="border-blue-500 bg-blue-50/50">
+              <CardHeader className="pb-3 pt-4">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-blue-600" />
+                  Circuito seleccionado
+                </CardTitle>
+                <CardDescription className="text-blue-900 font-medium">
+                  {selectedCircuito.properties?.nombre}
+                  {selectedMunicipio ? ` · ${selectedMunicipio.properties?.nombre}` : ""}
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">

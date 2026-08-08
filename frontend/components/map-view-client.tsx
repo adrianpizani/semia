@@ -1,33 +1,17 @@
-import { MapContainer, GeoJSON, TileLayer, LayersControl, useMapEvents } from 'react-leaflet';
+import { MapContainer, GeoJSON, TileLayer, LayersControl } from 'react-leaflet';
 import { useMapView } from '@/hooks/use-map-view';
 import type { LatLngExpression } from 'leaflet';
 import { DistritoFeature } from '@/lib/types'; // Importar tipo común
-import { useState } from 'react';
 
 // --- Tipos de Datos ---
 interface MapViewClientProps {
   selectedMetric: number | null;
   electoralData: any[] | null;
   onMunicipioClick: (municipio: DistritoFeature) => void;
+  onCircuitoClick?: (circuito: DistritoFeature) => void;
   isLoading: boolean;
   selectedMunicipio: DistritoFeature | null;
-}
-
-// --- Componente de Eventos del Mapa ---
-function MapEvents({ setIsCircuitosOverlayActive }: { setIsCircuitosOverlayActive: (isActive: boolean) => void }) {
-  useMapEvents({
-    overlayadd: (e) => {
-      if (e.name === 'Circuitos Electorales') {
-        setIsCircuitosOverlayActive(true);
-      }
-    },
-    overlayremove: (e) => {
-      if (e.name === 'Circuitos Electorales') {
-        setIsCircuitosOverlayActive(false);
-      }
-    },
-  });
-  return null; // Este componente no renderiza nada
+  selectedCircuito?: DistritoFeature | null;
 }
 
 // --- Componente Principal del Mapa ---
@@ -35,11 +19,11 @@ export default function MapViewClient({
   selectedMetric,
   electoralData,
   onMunicipioClick,
+  onCircuitoClick = () => {},
   isLoading: isDataLoading,
   selectedMunicipio,
+  selectedCircuito = null,
 }: MapViewClientProps) {
-  const [isCircuitosOverlayActive, setIsCircuitosOverlayActive] = useState(true);
-
   const {
     municipiosGeoJSON,
     circuitosGeoJSON,
@@ -52,8 +36,9 @@ export default function MapViewClient({
     selectedMetric,
     electoralData,
     onMunicipioClick,
+    onCircuitoClick,
     selectedMunicipio,
-    isCircuitosOverlayActive,
+    selectedCircuito,
   );
 
   const position: LatLngExpression = [-37.0, -60.0];
@@ -72,8 +57,6 @@ export default function MapViewClient({
       >
         <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
         
-        <MapEvents setIsCircuitosOverlayActive={setIsCircuitosOverlayActive} />
-
         <LayersControl position="topright">
           <LayersControl.BaseLayer checked name="Municipios">
             {municipiosGeoJSON && (
@@ -89,10 +72,13 @@ export default function MapViewClient({
           <LayersControl.Overlay checked name="Circuitos Electorales">
             {circuitosGeoJSON && (
               <GeoJSON
-                key={`circuitos-layer-${selectedMunicipio?.id || 'none'}`}
+                key={`circuitos-layer-${selectedMunicipio?.id || 'none'}-${selectedCircuito?.id || 'none'}`}
                 data={circuitosGeoJSON}
                 style={styleCircuito}
                 onEachFeature={onEachFeatureCircuito}
+                // Evita que el click sobre un circuito "burbujee" hacia la capa de
+                // municipios de abajo y des-seleccione la jerarquía superior.
+                bubblingMouseEvents={false}
               />
             )}
           </LayersControl.Overlay>
