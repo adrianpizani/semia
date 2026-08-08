@@ -109,10 +109,7 @@ Metricas ┘           ▲
 - Pasar nueva referencia de objeto (`{ ...selectedMunicipio }`).
 - Centralización de tipos en `lib/types.ts`.
 
-**Próximos pasos sugeridos:**
-- Revisar `next.config.mjs`, `tsconfig.json` o caché de Next que pueda afectar la propagación en client components.
-- Simplificar el árbol: eliminar `map-view.tsx` y que `mapa-electoral/page.tsx` monte `MapViewClient` directo.
-- Construir un ejemplo mínimo reproducible aislado.
+**✅ Resuelto (7-ago-2026):** se revisó y completó la cadena completa de props del mapa (ver sección de sesión más abajo). El problema real era la desalineación de la firma de `useMapView` con su llamador `MapViewClient` y el burbujeo de eventos de Leaflet.
 
 ### 🟡 Acoplamiento en API client
 
@@ -142,6 +139,36 @@ Cuatro conjuntos de datos hardcodeados marcados como "Ejemplo" en gris:
 - `mapa-electoral/page.tsx` tiene `selectedMetric` inicial hardcodeado en `1` ("Temporalmente en 1 para pruebas").
 - Logs de depuración (`print("--- DEPURANDO INCOMPATIBILIDAD GEOGRÁFICA ---")`) dentro de `generic_csv_processor.py` — limpiar para producción.
 - `useMapView`: tooltip de municipio usa `feature.properties.nombre`, pero el partido del circuito se matchea con `feature.properties.departamen` — depende de cómo vienen los GeoJSON de origen.
+
+---
+
+## 🧵 Sesión 7 de agosto de 2026 — Selección de circuitos electorales (jerarquía Partido → Circuito)
+
+**Objetivo:** al seleccionar un municipio, sus circuitos electorales debían volverse seleccionables **independientemente de si la métrica tiene datos para ellos**. Previo a esta sesión, cada intento de fix dejaba los circuitos invisibles o rompía la selección del municipio.
+
+### Problemas de raíz encontrados y resueltos
+
+1. **Firma de `useMapView` desalineada con su llamador.** Se amplió el hook a 7 parámetros (agregando `onCircuitoClick` y `selectedCircuito`), pero `MapViewClient` seguía invocándolo con 5. Al ser posicionales, `isCircuitosOverlayActive` quedaba `undefined` → `styleCircuito` devolvía opacidad 0 → **circuitos invisibles**. Se re-cablearon los 7 argumentos y las props nuevas.
+2. **Matching circuito→municipio con campo inexistente.** El código usaba `feature.properties.departamen`, pero la API NO devuelve ese campo (solo `nombre`, `nivel`, `parent_id`). Se cambió a matchear por **`parent_id`** (el `id` del municipio padre, ya presente en el backend) con fallback por nombre normalizado (sin acentos/mayúsculas).
+3. **El click sobre un circuito des-seleccionaba el municipio** (burbujeo de eventos de Leaflet hacia la capa de municipios de abajo). Se frenó con `DomEvent.stopPropagation(e.originalEvent)` en el handler y `bubblingMouseEvents={false}` en la capa.
+4. **Sincronización frágil por el checkbox de circuitos.** La visibilidad/interactividad dependía de un estado espejo `isCircuitosOverlayActive` alimentado por los eventos `overlayadd`/`overlayremove` del `LayersControl`, lo que se desincronizaba de forma intermitente al tocar el checkbox. **Se eliminó** ese estado y el componente `MapEvents`: ahora el propio `LayersControl` de react-leaflet es la única fuente de verdad para mostrar/ocultar la capa.
+
+### Cambios por archivo
+
+- `frontend/hooks/use-map-view.ts`: firma ampliada, matching por `parent_id`, handlers de hover/click de circuitos (`selectedCircuito`), `stopPropagation`, y eliminación del estado `isCircuitosOverlayActive`. Quedan `console.log` de depuración (a limpiar).
+- `frontend/components/map-view-client.tsx`: re-cableado de props al hook, `bubblingMouseEvents={false}`, `key` de la capa de circuitos incluye el circuito seleccionado, y remoción de `MapEvents`.
+- `frontend/app/mapa-electoral/page.tsx` y `frontend/app/page.tsx`: estado y handlers de `selectedCircuito`; se resetea el circuito al cambiar de municipio.
+- `frontend/components/dashboard-charts.tsx` y `frontend/app/page.tsx`: **card indicadora** del circuito seleccionado (muestra el nombre + municipio).
+
+### Decisión de diseño (Opción B)
+
+El **municipio queda como ancla de datos persistente**: al seleccionar un circuito no se des-selecciona el municipio ni se pierden sus métricas. El circuito se trata como **un nivel jerárquico inferior** (capa de contexto) que se resalta sobre su municipio. Por ahora solo se muestra el nombre del circuito; **a futuro**, cuando existan datos a nivel circuito, conectar el pipeline para que las métricas muestren el circuito con fallback al municipio.
+
+### Pendientes propuestos
+
+- Sacar los `console.log` de depuración de `page.tsx`, `mapa-electoral/page.tsx` y `use-map-view.ts`.
+- (Opcional) Fly-to/zoom automático hacia el circuito seleccionado.
+- Llevar el mismo patrón de card de circuito a `app/page.tsx` (ya hecho) y decidir si se replica el panel de datos a nivel circuito.
 
 ---
 
