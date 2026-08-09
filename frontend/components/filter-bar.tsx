@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider"
 import Link from "next/link"
 import { useState, useEffect, useMemo, useCallback, SetStateAction } from "react"
 import { Metrica, TipoMetricaEnum, AnyFiltro, FiltroCategorico, FiltroRango } from "@/lib/types"
+import { formatCompact, fromNormPosition, RangeScale } from "@/lib/range-utils"
 
 // --- Etiquetas legibles por dimensión (para los badges de filtros activos) ---
 const DIMENSION_LABELS: { [k: string]: string } = {
@@ -86,52 +87,83 @@ const ElectoralFilter = ({
   );
 };
 
-// --- Sub-componente para Filtro de Rango (PBG) ---
-const RangeFilter = ({ metric, range, onFilterChange }: { metric: Metrica, range?: {min: number, max: number}, onFilterChange: (metricId: number, filter: FiltroRango | null) => void }) => {
+// --- Sub-componente para Filtro de Rango (métricas económicas: PBG, etc.) ---
+// Data-driven: usa la escala detectada desde la muestra (log si hay mucha dispersión).
+const RangeFilter = ({ metric, range, onFilterChange }: {
+  metric: Metrica;
+  range?: { min: number; max: number; scale: RangeScale };
+  onFilterChange: (metricId: number, filter: FiltroRango | null) => void;
+}) => {
   const min = range?.min ?? 0;
   const max = range?.max ?? 100;
-  const [value, setValue] = useState<[number, number]>([min, max]);
+  const dataScale = range?.scale ?? 'linear';
 
-  // Update internal value when dynamic range arrives from parent
+  // Slider interno en posición normalizada 0..100 (escala uniforme para el manejador).
+  const [pos, setPos] = useState<[number, number]>([0, 100]);
+  const [scaleMode, setScaleMode] = useState<RangeScale>(dataScale);
+
+  // Sincroniza la escala detectada por la data (puede cambiar al cambiar de métrica).
   useEffect(() => {
-    if (range) {
-      setValue([range.min, range.max]);
-    }
-  }, [range]);
+    setScaleMode(dataScale);
+    setPos([0, 100]);
+  }, [dataScale, min, max]);
 
-  const handleValueChange = (newValue: [number, number]) => {
-    // Only update the local UI state for smooth sliding
-    setValue(newValue);
-  };
+  const toValue = useCallback(
+    (p: number) => fromNormPosition(min, max, p / 100, scaleMode),
+    [min, max, scaleMode]
+  );
 
-  const handleValueCommit = (committedValue: [number, number]) => {
-    // Actually apply the filter when the user stops dragging
-    if (committedValue[0] === min && committedValue[1] === max) {
+  const vmin = toValue(pos[0]);
+  const vmax = toValue(pos[1]);
+  const isFullRange = pos[0] <= 0.5 && pos[1] >= 99.5;
+
+  const handleValueCommit = (committed: number[]) => {
+    const full = committed[0] <= 0.5 && committed[1] >= 99.5;
+    if (full) {
       onFilterChange(metric.id, null);
     } else {
-      onFilterChange(metric.id, {
-        metrica_id: metric.id,
-        tipo: "rango",
-        rango: committedValue,
-      });
+      const a = fromNormPosition(min, max, committed[0] / 100, scaleMode);
+      const b = fromNormPosition(min, max, committed[1] / 100, scaleMode);
+      onFilterChange(metric.id, { metrica_id: metric.id, tipo: 'rango', rango: [a, b] });
     }
+  };
+
+  const handleEscalaChange = (value: string) => {
+    setScaleMode(value as RangeScale);
+    setPos([0, 100]);
+    onFilterChange(metric.id, null); // al cambiar de escala, se limpia el filtro aplicado
+  };
+
+  const handleClear = () => {
+    setPos([0, 100]);
+    onFilterChange(metric.id, null);
   };
 
   return (
-    <div className="flex items-center gap-4 w-[600px]">
+    <div className="flex flex-wrap items-center gap-3">
       <span className="text-sm font-medium w-[150px] truncate" title={metric.nombre_amigable}>{metric.nombre_amigable}:</span>
       <Slider
-        min={min}
-        max={max}
-        step={(max - min) / 100 || 1}
-        value={value}
-        onValueChange={handleValueChange}
+        min={0}
+        max={100}
+        step={1}
+        value={pos}
+        onValueChange={(v) => setPos([v[0] ?? 0, v[1] ?? 100])}
         onValueCommit={handleValueCommit}
-        className="flex-1"
+        className="w-[280px]"
       />
-      <span className="text-xs font-mono text-muted-foreground w-[150px] text-right">
-        {value[0].toLocaleString()}-{value[1].toLocaleString()}
+      <span className="text-xs font-mono text-muted-foreground w-[170px] text-right">
+        {isFullRange ? 'Todo el rango' : `${formatCompact(vmin)} – ${formatCompact(vmax)}`}
       </span>
+      <Select value={scaleMode} onValueChange={handleEscalaChange}>
+        <SelectTrigger className="w-[110px]"><SelectValue placeholder="Escala" /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="log">Log</SelectItem>
+          <SelectItem value="linear">Lineal</SelectItem>
+        </SelectContent>
+      </Select>
+      {!isFullRange && (
+        <Button variant="ghost" size="sm" onClick={handleClear} className="h-7 text-xs">Limpiar</Button>
+      )}
     </div>
   );
 };
@@ -147,7 +179,7 @@ interface FilterBarProps {
   availableParties?: string[];
   availableYears?: string[];
   availableVoteTypes?: string[];
-  metricRanges?: {[metricId: number]: {min: number, max: number}};
+  metricRanges?: {[metricId: number]: {min: number, max: number, scale: 'log' | 'linear'}};
 }
 
 export function FilterBar({

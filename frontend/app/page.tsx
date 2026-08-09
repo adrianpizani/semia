@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { FileText, MapPin } from "lucide-react"
 import { getMetricas, getElectoralData, getGenericMetricData, getMetricOpciones } from "@/lib/api"
+import { decideScale } from "@/lib/range-utils"
 import { Metrica, TipoMetricaEnum, GenericData, AnyFiltro } from "@/lib/types"
 
 const MapViewClient = dynamic(() => import('@/components/map-view-client'), {
@@ -46,7 +47,7 @@ export default function DashboardPage() {
   const [availableParties, setAvailableParties] = useState<string[]>([]);
   const [availableYears, setAvailableYears] = useState<string[]>([]);
   const [availableVoteTypes, setAvailableVoteTypes] = useState<string[]>([]);
-  const [metricRanges, setMetricRanges] = useState<{[metricId: number]: {min: number, max: number}}>({});
+  const [metricRanges, setMetricRanges] = useState<{[metricId: number]: {min: number, max: number, scale: 'log' | 'linear'}}>({});
   const router = useRouter();
 
   const handleReportClick = useCallback(() => {
@@ -183,11 +184,16 @@ export default function DashboardPage() {
 
             // Calculate min/max for this metric
             if (data && data.length > 0) {
-              const values = data.map(d => d.valor).filter((v): v is number => v !== null);
+              const values = data.map(d => d.valor).filter((v): v is number => v !== null && Number.isFinite(v));
               if (values.length > 0) {
+                // Detectamos la escala (log vs lineal) según la dispersión de la muestra,
+                // para que el filtro de rango se adapte a cualquier métrica económica.
+                const min = Math.min(...values);
+                const max = Math.max(...values);
+                const scale = decideScale(values);
                 setMetricRanges(prev => ({
                   ...prev,
-                  [metricId]: { min: Math.min(...values), max: Math.max(...values) }
+                  [metricId]: { min, max, scale }
                 }));
               }
             }
