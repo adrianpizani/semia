@@ -27,6 +27,26 @@ def _apply_filtros(query, filtros):
             query = query.where(Hechos_Datos.valor.between(filtro.rango[0], filtro.rango[1]))
     return query
 
+
+async def _geos_for_filter(db: AsyncSession, filtro: schemas.AnyFiltro) -> set[int]:
+    """Devuelve los geografia_id que satisfacen un filtro sobre SU PROPIA métrica.
+
+    Se usa para el CRUCE entre métricas: p. ej. un rango de PBG determina qué municipios
+    se muestran en el mapa electoral (intersección de geografías).
+    """
+    query = (
+        select(Hechos_Datos.geografia_id)
+        .where(Hechos_Datos.metrica_id == filtro.metrica_id)
+        .distinct()
+    )
+    if filtro.tipo == "categoria":
+        dimension = getattr(filtro, "dimension", "agrupacion_nombre")
+        query = query.where(Hechos_Datos.dimension_extra[dimension].as_string().in_(filtro.valores))
+    elif filtro.tipo == "rango":
+        query = query.where(Hechos_Datos.valor.between(filtro.rango[0], filtro.rango[1]))
+    result = await db.execute(query)
+    return set(result.scalars().all())
+
 async def get_all_metrics(db: AsyncSession) -> list[schemas.Metrica]:
     """
     Recupera todas las métricas de la base de datos, incluido su archivo de origen relacionado,
@@ -71,42 +91,49 @@ async def get_electoral_metric_data(db: AsyncSession, metric_id: int, filtros: O
     Recupera datos para una métrica electoral, agrupados por geografía y partido, con filtros opcionales.
     """
     filtros = filtros or []
+    self_metric = metric_id
 
-    # Filtros que modifican el conteo de votos (año, votos_tipo, rango) -> cambian el ganador.
+    # Filtros del PROPIO métrico que restringen las FILAS de votos (año, votos_tipo, rango)
+    # -> cambian el ganador.
     count_filters = [
         f for f in filtros
-        if not (f.tipo == "categoria" and getattr(f, "dimension", "agrupacion_nombre") == "agrupacion_nombre")
+        if f.metrica_id == self_metric
+        and not (f.tipo == "categoria" and getattr(f, "dimension", "agrupacion_nombre") == "agrupacion_nombre")
     ]
-    # Filtro de partido: restringe qué municipios se muestran (no cambia el color por ganador).
+    # Filtro de partido del propio métrico: restringe qué municipios se muestran.
     party_filters = [
         f for f in filtros
-        if f.tipo == "categoria" and getattr(f, "dimension", "agrupacion_nombre") == "agrupacion_nombre"
+        if f.metrica_id == self_metric
+        and f.tipo == "categoria" and getattr(f, "dimension", "agrupacion_nombre") == "agrupacion_nombre"
     ]
+    # Filtros de OTROS métricos (CRUCE, p. ej. rango de PBG): restringen los municipios a
+    # los que cumplen la condición en SU propia métrica (intersección de geografías).
+    cross_filters = [f for f in filtros if f.metrica_id != self_metric]
 
     base_query = select(
         Hechos_Datos.geografia_id,
         Hechos_Datos.valor,
         Hechos_Datos.dimension_extra['agrupacion_nombre'].as_string().label("agrupacion_nombre")
-    ).where(Hechos_Datos.metrica_id == metric_id)
+    ).where(Hechos_Datos.metrica_id == self_metric)
 
     base_query = _apply_filtros(base_query, count_filters)
 
+    # Conjunto de municipios que satisfacen TODOS los filtros de restricción
+    # (partido del propio métrico + filtros de cruce de otros métricos).
+    geo_sets = []
     if party_filters:
-        geo_sub = (
-            select(Hechos_Datos.geografia_id)
-            .where(Hechos_Datos.metrica_id == metric_id)
-            .distinct()
-        )
-        geo_sub = _apply_filtros(geo_sub, count_filters)
         for pf in party_filters:
-            geo_sub = geo_sub.where(
-                Hechos_Datos.dimension_extra['agrupacion_nombre'].as_string().in_(pf.valores)
-            )
-        geo_result = await db.execute(geo_sub)
-        geo_ids = set(geo_result.scalars().all())
-        if not geo_ids:
+            geo_sets.append(await _geos_for_filter(db, pf))
+    for cf in cross_filters:
+        geo_sets.append(await _geos_for_filter(db, cf))
+
+    if geo_sets:
+        intersection = geo_sets[0]
+        for geo_set in geo_sets[1:]:
+            intersection &= geo_set
+        if not intersection:
             return []
-        base_query = base_query.where(Hechos_Datos.geografia_id.in_(geo_ids))
+        base_query = base_query.where(Hechos_Datos.geografia_id.in_(intersection))
 
     hechos_con_agrupacion_cte = base_query.cte("hechos_con_agrupacion")
 

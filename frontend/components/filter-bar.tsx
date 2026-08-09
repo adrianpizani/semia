@@ -8,9 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
 import Link from "next/link"
-import { useState, useEffect, useMemo, useCallback, SetStateAction } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef, SetStateAction } from "react"
 import { Metrica, TipoMetricaEnum, AnyFiltro, FiltroCategorico, FiltroRango } from "@/lib/types"
-import { formatCompact, fromNormPosition, RangeScale } from "@/lib/range-utils"
+import { formatCompact, fromNormPosition, toNormPosition, RangeScale } from "@/lib/range-utils"
 
 // --- Etiquetas legibles por dimensión (para los badges de filtros activos) ---
 const DIMENSION_LABELS: { [k: string]: string } = {
@@ -89,6 +89,8 @@ const ElectoralFilter = ({
 
 // --- Sub-componente para Filtro de Rango (métricas económicas: PBG, etc.) ---
 // Data-driven: usa la escala detectada desde la muestra (log si hay mucha dispersión).
+// Desacoplado: el rango base (min/max/escala) es fijo (data sin filtrar) y la selección
+// del usuario (ventana en valores absolutos) se mantiene al aplicar el filtro, sin reset.
 const RangeFilter = ({ metric, range, onFilterChange }: {
   metric: Metrica;
   range?: { min: number; max: number; scale: RangeScale };
@@ -98,64 +100,76 @@ const RangeFilter = ({ metric, range, onFilterChange }: {
   const max = range?.max ?? 100;
   const dataScale = range?.scale ?? 'linear';
 
-  // Slider interno en posición normalizada 0..100 (escala uniforme para el manejador).
-  const [pos, setPos] = useState<[number, number]>([0, 100]);
+  // Ventana seleccionada en VALORES ABSOLUTOS (fuente de verdad del usuario).
+  const [win, setWin] = useState<[number, number]>([min, max]);
   const [scaleMode, setScaleMode] = useState<RangeScale>(dataScale);
+  const initializedRef = useRef(false);
 
-  // Sincroniza la escala detectada por la data (puede cambiar al cambiar de métrica).
+  // Inicializa la ventana + escala cuando llega el rango del dato. Solo una vez por métrica
+  // (el componente se remonta con key={metric.id}, así el ref arranca en false).
   useEffect(() => {
-    setScaleMode(dataScale);
-    setPos([0, 100]);
-  }, [dataScale, min, max]);
+    if (!initializedRef.current && range && min < max) {
+      setWin([min, max]);
+      setScaleMode(dataScale);
+      initializedRef.current = true;
+    }
+  }, [min, max, dataScale, range]);
 
   const toValue = useCallback(
     (p: number) => fromNormPosition(min, max, p / 100, scaleMode),
     [min, max, scaleMode]
   );
+  const toPos = useCallback(
+    (v: number) => Math.max(0, Math.min(100, toNormPosition(min, max, v, scaleMode) * 100)),
+    [min, max, scaleMode]
+  );
 
-  const vmin = toValue(pos[0]);
-  const vmax = toValue(pos[1]);
+  const pos: [number, number] = [toPos(win[0]), toPos(win[1])];
   const isFullRange = pos[0] <= 0.5 && pos[1] >= 99.5;
 
-  const handleValueCommit = (committed: number[]) => {
-    const full = committed[0] <= 0.5 && committed[1] >= 99.5;
-    if (full) {
+  const handleDrag = (v: number[]) => {
+    setWin([toValue(v[0] ?? 0), toValue(v[1] ?? 100)]);
+  };
+
+  const handleCommit = () => {
+    if (isFullRange) {
       onFilterChange(metric.id, null);
     } else {
-      const a = fromNormPosition(min, max, committed[0] / 100, scaleMode);
-      const b = fromNormPosition(min, max, committed[1] / 100, scaleMode);
-      onFilterChange(metric.id, { metrica_id: metric.id, tipo: 'rango', rango: [a, b] });
+      onFilterChange(metric.id, { metrica_id: metric.id, tipo: 'rango', rango: [win[0], win[1]] });
     }
   };
 
-  const handleEscalaChange = (value: string) => {
-    setScaleMode(value as RangeScale);
-    setPos([0, 100]);
-    onFilterChange(metric.id, null); // al cambiar de escala, se limpia el filtro aplicado
+  const handleEscalaChange = (scale: string) => {
+    setScaleMode(scale as RangeScale);
+    onFilterChange(metric.id, null); // cambia la escala de lectura; la ventana se mantiene
   };
 
   const handleClear = () => {
-    setPos([0, 100]);
+    setWin([min, max]);
     onFilterChange(metric.id, null);
   };
 
   return (
     <div className="flex flex-wrap items-center gap-3">
       <span className="text-sm font-medium w-[150px] truncate" title={metric.nombre_amigable}>{metric.nombre_amigable}:</span>
-      <Slider
-        min={0}
-        max={100}
-        step={1}
-        value={pos}
-        onValueChange={(v) => setPos([v[0] ?? 0, v[1] ?? 100])}
-        onValueCommit={handleValueCommit}
-        className="w-[280px]"
-      />
-      <span className="text-xs font-mono text-muted-foreground w-[170px] text-right">
-        {isFullRange ? 'Todo el rango' : `${formatCompact(vmin)} – ${formatCompact(vmax)}`}
-      </span>
+      <div className="min-w-[260px] max-w-[340px] flex-1">
+        <Slider
+          min={0}
+          max={100}
+          step={1}
+          value={pos}
+          onValueChange={handleDrag}
+          onValueCommit={handleCommit}
+          className="w-full"
+        />
+        <div className="mt-1 flex justify-between text-[11px] font-mono text-muted-foreground">
+          <span>{formatCompact(min)}</span>
+          <span>{isFullRange ? 'Todo el rango' : `${formatCompact(win[0])} – ${formatCompact(win[1])}`}</span>
+          <span>{formatCompact(max)}</span>
+        </div>
+      </div>
       <Select value={scaleMode} onValueChange={handleEscalaChange}>
-        <SelectTrigger className="w-[110px]"><SelectValue placeholder="Escala" /></SelectTrigger>
+        <SelectTrigger className="w-[100px]"><SelectValue placeholder="Escala" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="log">Log</SelectItem>
           <SelectItem value="linear">Lineal</SelectItem>

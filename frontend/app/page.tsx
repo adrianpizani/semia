@@ -181,22 +181,6 @@ export default function DashboardPage() {
           try {
             const data = await getGenericMetricData(metricId, genericFilters);
             newSecondaryMetricsData[metricId] = data;
-
-            // Calculate min/max for this metric
-            if (data && data.length > 0) {
-              const values = data.map(d => d.valor).filter((v): v is number => v !== null && Number.isFinite(v));
-              if (values.length > 0) {
-                // Detectamos la escala (log vs lineal) según la dispersión de la muestra,
-                // para que el filtro de rango se adapte a cualquier métrica económica.
-                const min = Math.min(...values);
-                const max = Math.max(...values);
-                const scale = decideScale(values);
-                setMetricRanges(prev => ({
-                  ...prev,
-                  [metricId]: { min, max, scale }
-                }));
-              }
-            }
           } catch (error) {
             console.error(`Error fetching data for secondary metric ${metricId}:`, error);
             newSecondaryMetricsData[metricId] = [];
@@ -218,6 +202,32 @@ export default function DashboardPage() {
 
     fetchSecondaryData();
   }, [selectedSecondaryMetrics, filters, activeMetrics]);
+
+  // Establece el rango base (min/max/escala) de cada métrica secundaria desde su data
+  // SIN filtrar. Así el slider tiene una escala fija que NO se reinicia ni se encoge
+  // cuando se aplica un filtro de rango (se desacopla el rango base de la selección).
+  useEffect(() => {
+    const missing = selectedSecondaryMetrics.filter(
+      id => !metricRanges[id] && activeMetrics.find(m => m.id === id)
+    );
+    if (missing.length === 0) return;
+    let cancelled = false;
+    Promise.all(missing.map(async (metricId) => {
+      try {
+        const data = await getGenericMetricData(metricId, []);
+        const values = data.map(d => d.valor).filter((v): v is number => v !== null && Number.isFinite(v));
+        if (values.length > 0 && !cancelled) {
+          const min = Math.min(...values);
+          const max = Math.max(...values);
+          const scale = decideScale(values);
+          setMetricRanges(prev => (prev[metricId] ? prev : { ...prev, [metricId]: { min, max, scale } }));
+        }
+      } catch (error) {
+        console.error(`Error fetching range for metric ${metricId}:`, error);
+      }
+    }));
+    return () => { cancelled = true; };
+  }, [selectedSecondaryMetrics, metricRanges, activeMetrics]);
 
   const handleMunicipioClick = useCallback((municipio: any) => {
     if (selectedMunicipio && selectedMunicipio.id === municipio.id) {

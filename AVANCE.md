@@ -17,6 +17,16 @@ Documento vivo que unifica el estado actual, los bugs conocidos, las decisiones 
 - **Leyenda de partidos:** overlay de React (`components/party-legend.tsx`) con swatches + paleta determinística por hash en `lib/party-color.ts` (compartida con el mapa, evita que la elección completa de 21 partidos quede toda en gris).
 - Aún pendiente de decisiones: semántica del color por partido (hoy = ganador; alternativa mapa de presencia/intensidad) y limpiar `experimental.proxyClientMaxBodySize` de `next.config.mjs` (quedó como fallback).
 
+**Sesión del 8 de agosto de 2026 (última parte):** foco en **filtro de rango económico + cruce entre métricas**.
+- **Filtro de rango económico reescrito** (PBG y futuras métricas económicas), ahora **data-driven**. Nuevo `lib/range-utils.ts` con `decideScale` (si `max/min ≥ 100` → escala **log**, si no **lineal**), `formatCompact` (es-AR), y mapeo posición↔valor. El `RangeFilter` usa la escala detectada, guarda la **ventana del usuario en valores absolutos** (no se resetea al filtrar), muestra `min/max` + rango elegido debajo del slider, más toggle de **Escala (Log/Lineal)** y botón **Limpiar**. `metricRanges` se calcula de la data **SIN filtrar** (una vez por métrica) para tener base fija.
+- **Cruce entre métricas (intersección de geografías):** en `metrica_service.py`, el endpoint electoral separa los filtros por `metrica_id`. Los del propio métrico se aplican a los votos (año/tipo/partido); los de **otros métricos** (p. ej. rango de PBG) van a `_geos_for_filter` y restringen los municipios del mapa a quienes cumplen en **su propia métrica** (el resto en gris). Ej: filtrar rango de PBG restringe el mapa electoral a los municipios en ese rango económico.
+- **Plan para generalizar el cruce a TODAS las métricas (pendiente):**
+  1. **Unificar el "geo set por filtro"** en una función compartida y usarla también al restringir las cards secundarias (misma lógica de cruce en todo).
+  2. **Soportar filtros temporales** (`fecha_dato`) además de `valor`/`dimension_extra`.
+  3. **Filtros categóricos genéricos** (UI + backend) para métricas no electorales (ya existe el campo `dimension`).
+  4. **Jerarquía geográfica / roll-up** (circuito → partido) si alguna métrica es de otro nivel, para que el cruce siga válido.
+- **Para probar en vivo:** el cruce PBG→mapa necesita reiniciar el backend (`docker compose restart backend`). Pendiente de valorar si los municipios excluidos se **atenúan** o **desaparecen** del mapa.
+
 ---
 
 ## 📌 Resumen ejecutivo
