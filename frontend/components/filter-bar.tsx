@@ -3,6 +3,7 @@ import { Calendar, Search, SlidersHorizontal, X, ChevronDown } from "lucide-reac
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -254,17 +255,35 @@ export function FilterBar({
     });
   }, [onFiltersChange]);
 
-  const availableSecondaryMetrics = activeMetrics.filter(
+    const availableSecondaryMetrics = activeMetrics.filter(
     metric => metric.id !== selectedPrimaryMetric
   );
 
-  const selectedMetrics = useMemo(() => {
-    const allIds = new Set([
-      ...(selectedPrimaryMetric ? [selectedPrimaryMetric] : []),
-      ...selectedSecondaryMetrics
-    ]);
-    return activeMetrics.filter(m => allIds.has(m.id));
-  }, [selectedPrimaryMetric, selectedSecondaryMetrics, activeMetrics]);
+  // Métrica objetos derivados de los IDs seleccionados.
+  const primaryMetric = selectedPrimaryMetric
+    ? activeMetrics.find(m => m.id === selectedPrimaryMetric) ?? null
+    : null;
+  const secondaryMetrics = useMemo(
+    () => activeMetrics.filter(m => selectedSecondaryMetrics.includes(m.id)),
+    [selectedSecondaryMetrics, activeMetrics]
+  );
+
+  // Renderiza el filtro correspondiente a una métrica según su tipo.
+  const renderMetricFilter = (metric: Metrica) => {
+    if (metric.tipo === TipoMetricaEnum.ELECTORAL) {
+      return <ElectoralFilter key={metric.id} metric={metric} onDimensionFilterChange={updateDimensionFilter} availableParties={availableParties} availableYears={availableYears} availableVoteTypes={availableVoteTypes} />;
+    }
+    if (metric.tipo === TipoMetricaEnum.ECONOMICA) {
+      return <RangeFilter key={metric.id} metric={metric} range={metricRanges[metric.id]} onFilterChange={updateOrRemoveFilter} />;
+    }
+        return null;
+  };
+
+  // Sólo renderizamos el separador+ filtro cuando la métrica tiene un componente de filtro.
+  const primaryFilter = primaryMetric ? renderMetricFilter(primaryMetric) : null;
+  const secondaryFilters = secondaryMetrics.filter(
+    m => m.tipo === TipoMetricaEnum.ELECTORAL || m.tipo === TipoMetricaEnum.ECONOMICA
+  );
 
   // Elimina un solo filtro (por dimensión en categóricos, o el rango de la métrica).
   const removeFilterSlot = (metricId: number, filter: AnyFiltro) => {
@@ -280,7 +299,8 @@ export function FilterBar({
 
   return (
     <div className="border-b border-border bg-card relative">
-      <div className="px-6 py-4 space-y-4">
+      <div className="px-6 py-4 space-y-3">
+        {/* Fila 1: métrica primaria (electoral) + sus filtros a la derecha */}
         <div className="flex items-center gap-3">
           {onPrimaryMetricChange && (
             <Select value={selectedPrimaryMetric?.toString() ?? "none"} onValueChange={handlePrimaryMetricChange}>
@@ -291,6 +311,16 @@ export function FilterBar({
               </SelectContent>
             </Select>
           )}
+          {primaryFilter && (
+            <>
+              <Separator orientation="vertical" className="h-6" />
+              {primaryFilter}
+            </>
+          )}
+        </div>
+
+        {/* Fila 2: selector de métricas secundarias + sus filtros a la derecha */}
+        <div className="flex items-center gap-3">
           {onSecondaryMetricsChange && (
             <Popover open={showSecondaryMetricsPopover} onOpenChange={setShowSecondaryMetricsPopover}>
               <PopoverTrigger asChild>
@@ -320,21 +350,15 @@ export function FilterBar({
               </PopoverContent>
             </Popover>
           )}
+          {secondaryFilters.length > 0 && (
+            <>
+              <Separator orientation="vertical" className="h-6" />
+              <div className="flex flex-wrap items-center gap-3">
+                {secondaryFilters.map(metric => renderMetricFilter(metric))}
+              </div>
+            </>
+          )}
         </div>
-        {selectedMetrics.length > 0 && (
-          <div className="flex items-center gap-4 pt-3 border-t border-dashed">
-            <span className="text-sm font-medium text-muted-foreground">Filtros:</span>
-            {selectedMetrics.map(metric => {
-              if (metric.tipo === TipoMetricaEnum.ELECTORAL) {
-                return <ElectoralFilter key={metric.id} metric={metric} onDimensionFilterChange={updateDimensionFilter} availableParties={availableParties} availableYears={availableYears} availableVoteTypes={availableVoteTypes} />;
-              }
-              if (metric.tipo === TipoMetricaEnum.ECONOMICA) {
-                return <RangeFilter key={metric.id} metric={metric} range={metricRanges[metric.id]} onFilterChange={updateOrRemoveFilter} />;
-              }
-              return null;
-            })}
-          </div>
-        )}
       </div>
       {filters.length > 0 && (
         <div className="border-t border-border bg-muted/30 px-6 py-3">
