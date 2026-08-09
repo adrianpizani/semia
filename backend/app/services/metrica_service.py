@@ -182,6 +182,39 @@ async def get_electoral_metric_data(db: AsyncSession, metric_id: int, filtros: O
 
     return final_data
 
+async def get_serie_historica_for_geo(
+    db: AsyncSession, metric_id: int, geografia_id: int
+) -> schemas.SerieHistorica:
+    """Serie histórica de una métrica ELECTORAL para una geografía puntual.
+
+    Devuelve los votos agregados por (año, partido) ordenados por año asc.
+    Pensada para alimentar una sparkline compacta en la card de Resultados.
+
+    Solo aplica a métricas electorales: si no, devolvemos serie vacía.
+    """
+    stmt = (
+        select(
+            Hechos_Datos.dimension_extra['año'].as_string().label('anio'),
+            Hechos_Datos.dimension_extra['agrupacion_nombre'].as_string().label('partido'),
+            func.sum(Hechos_Datos.valor).label('votos'),
+        )
+        .where(
+            Hechos_Datos.metrica_id == metric_id,
+            Hechos_Datos.geografia_id == geografia_id,
+        )
+        .group_by('anio', 'partido')
+        .order_by('anio')
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+    puntos = [
+        schemas.SerieHistoricaPunto(anio=r.anio or '', partido=r.partido or '', votos=float(r.votos or 0))
+        for r in rows
+        if r.anio and r.partido
+    ]
+    return schemas.SerieHistorica(geografia_id=geografia_id, puntos=puntos)
+
+
 async def get_all_generic_data_for_metric(db: AsyncSession, metric_id: int, filtros: Optional[List[schemas.AnyFiltro]] = None) -> list[schemas.GenericData]:
     """
     Recupera todos los valores para una métrica genérica, con filtros opcionales.

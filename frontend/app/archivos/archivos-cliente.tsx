@@ -113,6 +113,7 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
   const { verifyProcessorByHeaders } = useProcessors() // Usar el hook de procesadores
   const [matchedProcessor, setMatchedProcessor] = useState<Procesador | null>(null) // Para el procesador encontrado
   const [fileHeaders, setFileHeaders] = useState<string[]>([]) // Para almacenar los encabezados del archivo
+  const [fileSample, setFileSample] = useState<Record<string, string>[]>([]) // Muestra de filas para detectar columnas numéricas vs strings
   const [showCreateProcessorModal, setShowCreateProcessorModal] = useState<boolean>(false) // Para controlar el modal de creación
   
   const [uploadForm, setUploadForm] = useState({
@@ -176,9 +177,10 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
       await uploadArchivo(formData)
       toast.success("Archivo recibido. El procesamiento ha comenzado en segundo plano.")
       setUploadDialogOpen(false)
-      setUploadForm({ file: null, nombre_visible: "", descripcion: "", tipo_metrica: TipoMetrica.ELECTORAL }) 
+      setUploadForm({ file: null, nombre_visible: "", descripcion: "", tipo_metrica: TipoMetrica.ELECTORAL })
       setMatchedProcessor(null) // Resetear el procesador
       setFileHeaders([]) // Resetear encabezados
+      setFileSample([]) // Resetear muestra
       router.refresh() // Re-fetch para mostrar el estado PENDIENTE/PROCESANDO
     } catch (error) {
       toast.error(`Error al subir: ${error instanceof Error ? error.message : "Error desconocido"}`)
@@ -191,20 +193,27 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
         setUploadForm((prev) => ({ ...prev, file: selectedFile }))
         // Leer encabezados del archivo seleccionado
         Papa.parse(selectedFile, {
-            preview: 1, // Solo analizar la primera fila para obtener los encabezados
+            // Necesitamos una muestra de varias filas para distinguir columnas
+            // numéricas de categóricas (el modal usa esto para marcar value_identifier).
+            preview: 10,
             header: true, // Tratar la primera fila como encabezados
             complete: async (results) => {
                 if (results.meta.fields && results.meta.fields.length > 0) {
                     setFileHeaders(results.meta.fields)
+                    setFileSample((results.data || []).filter((r): r is Record<string, string> => !!r))
                     const requestData: ProcesadorMatchRequest = {
                         headers: results.meta.fields,
                         tipo_archivo: uploadForm.tipo_metrica, // Usar el tipo de métrica seleccionado actualmente
                     }
                     const processor = await verifyProcessorByHeaders(requestData)
                     if (processor) {
+                        // Ya existe un procesador con este formato exacto. Igual abrimos
+                        // el modal pre-cargado con su mapeo: el usuario puede crear una
+                        // variante (mismo mapeo, distinto value_identifier/metric_name)
+                        // para subir el mismo archivo varias veces bajo métricas diferentes.
                         setMatchedProcessor(processor)
-                        toast.success(`Procesador '${processor.nombre}' encontrado para este archivo.`)
-                        setShowCreateProcessorModal(false) // Asegurarse de que el modal no se abra
+                        toast.info(`Procesador '${processor.nombre}' encontrado. Cree una variante con otro value_identifier si lo va a usar para otra métrica.`)
+                        setShowCreateProcessorModal(true)
                     } else {
                         setMatchedProcessor(null)
                         setShowCreateProcessorModal(true) // Abrir el modal para crear un nuevo procesador
@@ -212,6 +221,7 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
                     }
                 } else {
                     setFileHeaders([])
+                    setFileSample([])
                     setMatchedProcessor(null)
                     toast.error("No se pudieron leer los encabezados del archivo o el archivo está vacío.")
                 }
@@ -220,6 +230,7 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
                 console.error("Error parsing file for headers:", error)
                 toast.error("Error al leer el archivo para extraer encabezados.")
                 setFileHeaders([])
+                setFileSample([])
                 setMatchedProcessor(null)
             },
         })
@@ -290,6 +301,7 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
                         // Al cambiar el tipo de métrica, resetear el procesador y los encabezados
                         setMatchedProcessor(null);
                         setFileHeaders([]);
+                        setFileSample([]);
                         // También cerrar el modal de creación si estuviera abierto
                         setShowCreateProcessorModal(false);
                     }}
@@ -472,7 +484,9 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
         isOpen={showCreateProcessorModal}
         onClose={() => setShowCreateProcessorModal(false)}
         fileHeaders={fileHeaders}
+        fileSample={fileSample}
         tipoMetrica={uploadForm.tipo_metrica}
+        initialProcessor={matchedProcessor}
         onProcessorCreated={handleProcessorCreated}
       />
 

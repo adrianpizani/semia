@@ -110,6 +110,20 @@ class GeoDataElectoral(BaseModel):
     resultados: list[ResultadoPartido]
     ganador: ResultadoPartido | None
 
+# --- Serie histórica por municipio (sparkline) ---
+
+class SerieHistoricaPunto(BaseModel):
+    """Un punto de la serie: votos agregados por partido en un año, para un municipio."""
+    anio: str
+    partido: str
+    votos: float
+
+class SerieHistorica(BaseModel):
+    """Serie histórica de votos por (año, partido) para un municipio.
+    Pensada para renderizar una sparkline compacta (~80x24px)."""
+    geografia_id: int
+    puntos: list[SerieHistoricaPunto]
+
 class GenericData(BaseModel):
         geografia_id: int
         geografia_nombre: str

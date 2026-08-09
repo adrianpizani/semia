@@ -64,22 +64,25 @@ export const useMapView = (
   }, []);
 
   const getStyleMunicipio = useCallback((feature?: DistritoFeature): PathOptions => {
-    const baseStyle: PathOptions = { 
+    const baseStyle: PathOptions = {
       weight: 2,
-      opacity: 1, 
-      color: 'black', 
-      fillOpacity: 0.65 
+      opacity: 1,
+      color: 'black',
+      fillOpacity: 0.65,
+      // Habilita la transición CSS de fill/fill-opacity al cambiar filtros.
+      // Hover/selected usa la variante --instant para feedback inmediato.
+      className: 'walicho-municipio',
     };
     let fillColor = getPartyColor(null);
     if (feature && electoralData) {
       const districtData = electoralData.find(d => d.geografia_id === feature.id);
       if (districtData && districtData.ganador) {
         fillColor = getPartyColor(districtData.ganador.partido);
-      } 
+      }
     }
     baseStyle.fillColor = fillColor;
     if (feature && feature.id === hoveredId) {
-      return { ...baseStyle, weight: 4, color: '#333', fillOpacity: 0.8 };
+      return { ...baseStyle, weight: 4, color: '#333', fillOpacity: 0.8, className: 'walicho-municipio walicho-municipio--instant' };
     }
     return baseStyle;
   }, [hoveredId, electoralData]);

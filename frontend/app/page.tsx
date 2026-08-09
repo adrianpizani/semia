@@ -2,14 +2,13 @@
 
 import { useState, useEffect, useCallback, SetStateAction } from "react"
 import dynamic from 'next/dynamic';
-import { useRouter } from "next/navigation"
 import { FilterBar } from "@/components/filter-bar"
 import { DashboardCharts } from "@/components/dashboard-charts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { FileText, MapPin } from "lucide-react"
+import { MapPin } from "lucide-react"
 import { getMetricas, getElectoralData, getGenericMetricData, getMetricOpciones } from "@/lib/api"
 import { decideScale } from "@/lib/range-utils"
+import { formatCompact } from "@/lib/range-utils"
 import { Metrica, TipoMetricaEnum, GenericData, AnyFiltro } from "@/lib/types"
 
 const MapViewClient = dynamic(() => import('@/components/map-view-client'), {
@@ -48,24 +47,6 @@ export default function DashboardPage() {
   const [availableYears, setAvailableYears] = useState<string[]>([]);
   const [availableVoteTypes, setAvailableVoteTypes] = useState<string[]>([]);
   const [metricRanges, setMetricRanges] = useState<{[metricId: number]: {min: number, max: number, scale: 'log' | 'linear'}}>({});
-  const router = useRouter();
-
-  const handleReportClick = useCallback(() => {
-    if (selectedMunicipio) {
-      const query = new URLSearchParams();
-      query.append("geografia_id", selectedMunicipio.id.toString());
-      if (selectedPrimaryMetric) {
-        query.append("metrica_1", selectedPrimaryMetric.toString());
-      }
-      if (selectedSecondaryMetrics.length > 0) {
-        query.append("metrica_2", selectedSecondaryMetrics[0].toString());
-      } else {
-        // Por defecto para demostración si no hay secundaria seleccionada
-        query.append("metrica_2", "2"); 
-      }
-      router.push(`/graficos?${query.toString()}`);
-    }
-  }, [selectedMunicipio, selectedPrimaryMetric, selectedSecondaryMetrics, router]);
 
   // Fetch active metrics on mount
   useEffect(() => {
@@ -172,6 +153,12 @@ export default function DashboardPage() {
         // Los filtros electorales (partido, año, tipo de voto) NO se aplican a métricas
         // genéricas (socioeconómico, PBG), que no tienen esas dimensiones; solo les
         // aplican rangos y demás filtros no electorales. Evita que queden vacías.
+        //
+        // Además, el rango de la PROPIA métrica NO se aplica a su propio fetch:
+        // un slider de PBG es un filtro de VISIBILIDAD (qué municipios entran al
+        // cruce del mapa electoral), no un filtro de VALOR. Si el municipio
+        // seleccionado tiene su PBG fuera del rango, queremos seguir viendo el
+        // número real en la card de "Indicadores seleccionados".
         const ELECTORAL_DIMENSIONS = new Set(['agrupacion_nombre', 'año', 'votos_tipo']);
         const genericFilters = (filters ?? []).filter(f =>
           !(f.tipo === 'categoria' && ELECTORAL_DIMENSIONS.has(f.dimension))
@@ -179,7 +166,11 @@ export default function DashboardPage() {
 
         await Promise.all(metricsToFetch.map(async (metricId) => {
           try {
-            const data = await getGenericMetricData(metricId, genericFilters);
+            // Para esta métrica, descartar su propio filtro de rango.
+            const crossFiltersOnly = genericFilters.filter(f =>
+              !(f.metrica_id === metricId && f.tipo === 'rango')
+            );
+            const data = await getGenericMetricData(metricId, crossFiltersOnly);
             newSecondaryMetricsData[metricId] = data;
           } catch (error) {
             console.error(`Error fetching data for secondary metric ${metricId}:`, error);
@@ -316,58 +307,74 @@ export default function DashboardPage() {
             </Card>
           )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                {selectedMunicipioData ? `Resultados en ${selectedMunicipioData.nombre}` : primaryMetricName}
-              </CardTitle>
-              <CardDescription>
-                {selectedMunicipioData
-                  ? `Total de votos: ${selectedMunicipioData.resultados.reduce((acc: number, p: any) => acc + p.votos, 0).toLocaleString('es-AR')}`
-                  : "Selecciona un municipio en el mapa para ver los detalles"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {selectedMunicipioData && topParties.length > 0 ? (
-                topParties.map((partido, index) => (
-                  <div key={index} className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium">{partido.partido}</span>
-                      <span className="text-muted-foreground">{partido.porcentaje}%</span>
-                    </div>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                      <div className="h-full bg-blue-500" style={{ width: `${partido.porcentaje}%` }} />
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-sm text-muted-foreground">
-                  {selectedMunicipio ? "No hay datos de resultados para este municipio." : "Los resultados del municipio seleccionado aparecerán aquí."}
-                </div>
-              )}
-              {selectedMunicipio && (
-                <div className="pt-4 mt-2 border-t">
-                  <Button className="w-full gap-2" onClick={handleReportClick}>
-                    <FileText className="h-4 w-4" />
-                    Reportar Municipio
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          {selectedMunicipioSecondaryMetricsData.map((data, index) => (
-            <Card key={index}>
-              <CardHeader>
-                <CardTitle className="text-base">{data.metrica_nombre}</CardTitle>
-                <CardDescription>{`Datos para ${data.geografia_nombre}`}</CardDescription>
+          {/* Side-by-side: Resultados (primaria) + Indicadores seleccionados (secundarias).
+              Comparten la misma fila en un grid 2-cols dentro de la columna derecha,
+              para que el cliente vea toda la info del municipio clickeado de un vistazo. */}
+          <div className="grid grid-cols-2 gap-4">
+            <Card>
+              <CardHeader className="pb-2 pt-4">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  {selectedMunicipioData ? `Resultados en ${selectedMunicipioData.nombre}` : primaryMetricName}
+                </CardTitle>
+                <CardDescription className="text-sm">
+                  {selectedMunicipioData
+                    ? `Total de votos: ${selectedMunicipioData.resultados.reduce((acc: number, p: any) => acc + p.votos, 0).toLocaleString('es-AR')}`
+                    : "Selecciona un municipio en el mapa para ver los detalles"}
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">
-                  {data.valor !== null ? data.valor.toLocaleString('es-AR') : 'N/A'}
-                </p>
+              <CardContent className="pt-1 space-y-1.5">
+                {selectedMunicipioData && topParties.length > 0 ? (
+                  topParties.map((partido, index) => (
+                    <div key={index} className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">{partido.partido}</span>
+                        <span className="text-muted-foreground">{partido.porcentaje}%</span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                        <div className="h-full bg-blue-500" style={{ width: `${partido.porcentaje}%` }} />
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-muted-foreground">
+                    {selectedMunicipio ? "No hay datos de resultados para este municipio." : "Los resultados del municipio seleccionado aparecerán aquí."}
+                  </div>
+                )}
               </CardContent>
             </Card>
-          ))}
+            {/* Ficha compacta del municipio: siempre visible cuando hay selección,
+                muestre secundarias si las hay, si no invita a sumar métricas.
+                Antes se ocultaba si no había secundarias -> el usuario perdía el
+                feedback de qué municipio estaba mirando. */}
+            {selectedMunicipio && (
+              <Card>
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Indicadores seleccionados</CardTitle>
+                  <CardDescription className="text-sm">{selectedMunicipio.properties?.nombre ?? selectedMunicipioSecondaryMetricsData[0]?.geografia_nombre ?? ""}</CardDescription>
+                </CardHeader>
+                <CardContent className="pt-1">
+                  {selectedMunicipioSecondaryMetricsData.length > 0 ? (
+                    <ul className="divide-y">
+                      {selectedMunicipioSecondaryMetricsData.map((data, index) => (
+                        <li key={index} className="flex items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0">
+                          <span className="text-sm text-muted-foreground truncate" title={data.metrica_nombre}>
+                            {data.metrica_nombre}
+                          </span>
+                          <span className="font-mono text-sm font-semibold tabular-nums">
+                            {data.valor !== null ? formatCompact(data.valor) : 'N/A'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Sumá métricas secundarias desde la barra superior para ver sus valores acá.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
 
           {/* Distribución de votos por partido para el municipio seleccionado. */}
           {selectedMunicipioData && (

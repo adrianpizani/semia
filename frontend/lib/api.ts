@@ -196,4 +196,25 @@ export const getMetricOpciones = async (metricId: number): Promise<MetricaOpcion
   }
 };
 
+export interface SeriePunto {
+  anio: string
+  partido: string
+  votos: number
+}
+
+export const getSerieHistorica = async (metricId: number, geografiaId: number): Promise<SeriePunto[]> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/metricas/${metricId}/serie-historica/${geografiaId}`, { cache: 'no-store' });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Network response was not ok for Serie Historica');
+    }
+    const data = await response.json();
+    return data.puntos ?? [];
+  } catch (error) {
+    console.error('Error fetching serie historica:', error);
+    return [];
+  }
+};
+
 

@@ -7,6 +7,8 @@ export interface Procesador {
     id: number
     nombre: string
     tipo_archivo: string
+    nivel_geografico: string
+    metric_name: string
     mapeo_columnas: { [key: string]: string }
 }
 

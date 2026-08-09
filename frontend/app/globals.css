@@ -119,6 +119,19 @@
   font-family: var(--font-sans);
 }
 
+/* Transición suave de color al cambiar filtro o métrica. Sin esto, los
+   municipios "saltan" de un partido a otro al instante, lo que rompe la
+   lectura del cruce. fill-opacity también transiciona para suavizar el
+   caso del municipio gris (sin ganador). */
+path.walicho-municipio {
+  transition: fill 250ms ease-out, fill-opacity 250ms ease-out;
+}
+/* Hover/selected también de forma inmediata — si heredaran la transición, el
+   feedback de "estoy clickeando" se sentiría con lag. */
+path.walicho-municipio--instant {
+  transition: none;
+}
+
 .leaflet-popup-content-wrapper {
   border-radius: var(--radius);
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);

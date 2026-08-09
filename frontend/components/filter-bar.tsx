@@ -92,10 +92,15 @@ const ElectoralFilter = ({
 // Data-driven: usa la escala detectada desde la muestra (log si hay mucha dispersión).
 // Desacoplado: el rango base (min/max/escala) es fijo (data sin filtrar) y la selección
 // del usuario (ventana en valores absolutos) se mantiene al aplicar el filtro, sin reset.
-const RangeFilter = ({ metric, range, onFilterChange }: {
+const RangeFilter = ({ metric, range, onFilterChange, resetSignal }: {
   metric: Metrica;
   range?: { min: number; max: number; scale: RangeScale };
   onFilterChange: (metricId: number, filter: FiltroRango | null) => void;
+  // Cambia este número para forzar al slider a volver a [min, max]. Lo usa
+  // "Limpiar filtros" para resetear la ventana visual cuando el padre borra
+  // los filtros (no podemos resetear desde onFilterChange porque al limpiar
+  // ya no hay nada que commitear).
+  resetSignal?: number;
 }) => {
   const min = range?.min ?? 0;
   const max = range?.max ?? 100;
@@ -115,6 +120,13 @@ const RangeFilter = ({ metric, range, onFilterChange }: {
       initializedRef.current = true;
     }
   }, [min, max, dataScale, range]);
+
+  // Reset externo (botón "Limpiar filtros"): vuelve la ventana al rango completo.
+  // NO toca scaleMode para no pisar la elección de escala del usuario.
+  useEffect(() => {
+    if (resetSignal === undefined) return;
+    setWin([min, max]);
+  }, [resetSignal, min, max]);
 
   const toValue = useCallback(
     (p: number) => fromNormPosition(min, max, p / 100, scaleMode),
@@ -211,6 +223,15 @@ export function FilterBar({
   metricRanges = {}
 }: FilterBarProps) {
   const [showSecondaryMetricsPopover, setShowSecondaryMetricsPopover] = useState(false)
+  // Contador que se incrementa cada vez que el usuario hace "Limpiar filtros".
+  // Se pasa a los RangeFilter para forzar el reseteo visual de la ventana
+  // cuando el padre borra el array de filtros (RangeFilter mantiene estado local).
+  const [rangeResetSignal, setRangeResetSignal] = useState(0)
+
+  const handleClearAllFilters = () => {
+    if (onFiltersChange) onFiltersChange([])
+    setRangeResetSignal(s => s + 1)
+  }
 
   const handlePrimaryMetricChange = (value: string) => {
     const newPrimaryMetricId = value === "none" ? null : Number(value);
@@ -269,12 +290,15 @@ export function FilterBar({
   );
 
   // Renderiza el filtro correspondiente a una métrica según su tipo.
+  // Numéricas no-electorales (ECONOMICA, DEMOGRAFICA) usan el mismo slider de rango;
+  // eso evita que un Poblacion_Total o un Indice_NBI queden sin UI de filtro
+  // cuando el usuario los marca como DEMOGRAFICA al subir el CSV.
   const renderMetricFilter = (metric: Metrica) => {
     if (metric.tipo === TipoMetricaEnum.ELECTORAL) {
       return <ElectoralFilter key={metric.id} metric={metric} onDimensionFilterChange={updateDimensionFilter} availableParties={availableParties} availableYears={availableYears} availableVoteTypes={availableVoteTypes} />;
     }
-    if (metric.tipo === TipoMetricaEnum.ECONOMICA) {
-      return <RangeFilter key={metric.id} metric={metric} range={metricRanges[metric.id]} onFilterChange={updateOrRemoveFilter} />;
+    if (metric.tipo === TipoMetricaEnum.ECONOMICA || metric.tipo === TipoMetricaEnum.DEMOGRAFICA) {
+      return <RangeFilter key={metric.id} metric={metric} range={metricRanges[metric.id]} onFilterChange={updateOrRemoveFilter} resetSignal={rangeResetSignal} />;
     }
         return null;
   };
@@ -282,7 +306,7 @@ export function FilterBar({
   // Sólo renderizamos el separador+ filtro cuando la métrica tiene un componente de filtro.
   const primaryFilter = primaryMetric ? renderMetricFilter(primaryMetric) : null;
   const secondaryFilters = secondaryMetrics.filter(
-    m => m.tipo === TipoMetricaEnum.ELECTORAL || m.tipo === TipoMetricaEnum.ECONOMICA
+    m => m.tipo === TipoMetricaEnum.ELECTORAL || m.tipo === TipoMetricaEnum.ECONOMICA || m.tipo === TipoMetricaEnum.DEMOGRAFICA
   );
 
   // Elimina un solo filtro (por dimensión en categóricos, o el rango de la métrica).
@@ -384,7 +408,7 @@ export function FilterBar({
                 );
               })}
             </div>
-            <Button variant="ghost" size="sm" onClick={() => onFiltersChange && onFiltersChange([])} className="h-7 text-xs">
+            <Button variant="ghost" size="sm" onClick={handleClearAllFilters} className="h-7 text-xs">
               Limpiar filtros
             </Button>
           </div>
