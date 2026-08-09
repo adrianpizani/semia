@@ -5,26 +5,7 @@ import type { Layer, PathOptions } from 'leaflet';
 import { getMunicipiosGeoJSON, getCircuitosGeoJSON } from '@/lib/api';
 import { DomEvent } from 'leaflet';
 import { DistritoFeature, DistritoProperties, ElectoralData } from '@/lib/types'; // Importar tipos comunes
-
-// --- Paleta de Colores y Estilos ---
-const partyColorPalette: { [key: string]: string } = {
-  'JUNTOS POR EL CAMBIO': '#FFD700',
-  'FRENTE DE TODOS': '#1E90FF',
-  'CONSENSO FEDERAL': '#FFA500',
-  'FRENTE DE IZQUIERDA Y DE TRABAJADORES - UNIDAD': '#FF0000',
-  'UNIDAD CIUDADANA': '#87CEEB',
-  'CAMBIEMOS BUENOS AIRES': '#FFC0CB',
-  '1PAIS': '#9370DB',
-  'FRENTE JUSTICIALISTA': '#00008B',
-  'FRENTE DE IZQUIERDA Y DE LOS TRABAJadores': '#DC143C',
-  'JUNTOS': '#FFD700',
-  'default': '#D1D5DB'
-};
-
-const getPartyColor = (partyName: string | null | undefined): string => {
-  if (!partyName) return partyColorPalette.default;
-  return partyColorPalette[partyName] || partyColorPalette.default;
-};
+import { getPartyColor } from '@/lib/party-color'; // Color por partido (compartido con la leyenda)
 
 // Normaliza un nombre geográfico para hacer match robusto
 // (sin acentos, minúsculas, sin espacios sobrantes).
@@ -89,7 +70,7 @@ export const useMapView = (
       color: 'black', 
       fillOpacity: 0.65 
     };
-    let fillColor = partyColorPalette.default;
+    let fillColor = getPartyColor(null);
     if (feature && electoralData) {
       const districtData = electoralData.find(d => d.geografia_id === feature.id);
       if (districtData && districtData.ganador) {

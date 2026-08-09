@@ -8,7 +8,7 @@ import { DashboardCharts } from "@/components/dashboard-charts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { FileText, MapPin } from "lucide-react"
-import { getMetricas, getElectoralData, getGenericMetricData } from "@/lib/api"
+import { getMetricas, getElectoralData, getGenericMetricData, getMetricOpciones } from "@/lib/api"
 import { Metrica, TipoMetricaEnum, GenericData, AnyFiltro } from "@/lib/types"
 
 const MapViewClient = dynamic(() => import('@/components/map-view-client'), {
@@ -44,6 +44,8 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [secondaryMetricsData, setSecondaryMetricsData] = useState<{[metricId: number]: GenericData[]}>({});
   const [availableParties, setAvailableParties] = useState<string[]>([]);
+  const [availableYears, setAvailableYears] = useState<string[]>([]);
+  const [availableVoteTypes, setAvailableVoteTypes] = useState<string[]>([]);
   const [metricRanges, setMetricRanges] = useState<{[metricId: number]: {min: number, max: number}}>({});
   const router = useRouter();
 
@@ -81,6 +83,32 @@ export default function DashboardPage() {
   useEffect(() => {
     setAvailableParties([]);
   }, [selectedPrimaryMetric]);
+
+  // Cargar opciones disponibles (años, tipos de voto) de la métrica electoral principal
+  // para poblar los selectores de filtro.
+  useEffect(() => {
+    let cancelled = false;
+    const loadOpciones = async () => {
+      if (selectedPrimaryMetric === null) {
+        setAvailableYears([]);
+        setAvailableVoteTypes([]);
+        return;
+      }
+      const metricInfo = activeMetrics.find(m => m.id === selectedPrimaryMetric);
+      if (metricInfo?.tipo === TipoMetricaEnum.ELECTORAL) {
+        const opciones = await getMetricOpciones(selectedPrimaryMetric);
+        if (!cancelled) {
+          setAvailableYears(opciones.años);
+          setAvailableVoteTypes(opciones.votos_tipos);
+        }
+      } else {
+        setAvailableYears([]);
+        setAvailableVoteTypes([]);
+      }
+    };
+    loadOpciones();
+    return () => { cancelled = true; };
+  }, [selectedPrimaryMetric, activeMetrics]);
 
   // Fetch electoral data when primary metric or filters change
   useEffect(() => {
@@ -140,9 +168,17 @@ export default function DashboardPage() {
       }
 
       if (metricsToFetch.length > 0) {
+        // Los filtros electorales (partido, año, tipo de voto) NO se aplican a métricas
+        // genéricas (socioeconómico, PBG), que no tienen esas dimensiones; solo les
+        // aplican rangos y demás filtros no electorales. Evita que queden vacías.
+        const ELECTORAL_DIMENSIONS = new Set(['agrupacion_nombre', 'año', 'votos_tipo']);
+        const genericFilters = (filters ?? []).filter(f =>
+          !(f.tipo === 'categoria' && ELECTORAL_DIMENSIONS.has(f.dimension))
+        );
+
         await Promise.all(metricsToFetch.map(async (metricId) => {
           try {
-            const data = await getGenericMetricData(metricId, filters);
+            const data = await getGenericMetricData(metricId, genericFilters);
             newSecondaryMetricsData[metricId] = data;
 
             // Calculate min/max for this metric
@@ -230,6 +266,8 @@ export default function DashboardPage() {
         filters={filters}
         onFiltersChange={handleFiltersChange}
         availableParties={availableParties}
+        availableYears={availableYears}
+        availableVoteTypes={availableVoteTypes}
         metricRanges={metricRanges}
       />
       <div className="flex flex-1 gap-4 overflow-hidden p-4">

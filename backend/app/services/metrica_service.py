@@ -7,38 +7,25 @@ from collections import defaultdict
 from typing import List, Optional
 
 from models import Metricas, Hechos_Datos, Dimension_Geografica, TipoMetrica
+from sqlalchemy import func, distinct
 import schemas # Importar schemas
 
-async def _get_filtered_geografia_ids(db: AsyncSession, filtros: Optional[List[schemas.AnyFiltro]]) -> Optional[set[int]]:
+def _apply_filtros(query, filtros):
     """
-    Aplica una lista de filtros para encontrar el conjunto de IDs de geografía que satisfacen todas las condiciones.
-    Devuelve None si no se proporcionan filtros.
-    Devuelve un conjunto de geografia_ids que satisfacen los filtros.
+    Aplica una lista de filtros a una query de Hechos_Datos:
+      - 'categoria': filtra por un valor de una dimensión de `dimension_extra`
+        (partido -> agrupacion_nombre, o año / votos_tipo según `filtro.dimension`).
+      - 'rango': filtra por valor numérico.
     """
     if not filtros:
-        return None
-
-    list_of_geo_id_sets = []
-
+        return query
     for filtro in filtros:
-        query = select(Hechos_Datos.geografia_id).where(Hechos_Datos.metrica_id == filtro.metrica_id)
-
         if filtro.tipo == "categoria":
-            query = query.where(Hechos_Datos.dimension_extra['agrupacion_nombre'].as_string().in_(filtro.valores))
+            dimension = getattr(filtro, "dimension", "agrupacion_nombre")
+            query = query.where(Hechos_Datos.dimension_extra[dimension].as_string().in_(filtro.valores))
         elif filtro.tipo == "rango":
             query = query.where(Hechos_Datos.valor.between(filtro.rango[0], filtro.rango[1]))
-        
-        result = await db.execute(query.distinct())
-        list_of_geo_id_sets.append(set(result.scalars().all()))
-
-    if not list_of_geo_id_sets:
-        return set()
-
-    geos_en_comun = list_of_geo_id_sets[0]
-    for i in range(1, len(list_of_geo_id_sets)):
-        geos_en_comun.intersection_update(list_of_geo_id_sets[i])
-        
-    return geos_en_comun
+    return query
 
 async def get_all_metrics(db: AsyncSession) -> list[schemas.Metrica]:
     """
@@ -83,10 +70,18 @@ async def get_electoral_metric_data(db: AsyncSession, metric_id: int, filtros: O
     """
     Recupera datos para una métrica electoral, agrupados por geografía y partido, con filtros opcionales.
     """
-    filtered_geo_ids = await _get_filtered_geografia_ids(db, filtros)
+    filtros = filtros or []
 
-    if filtered_geo_ids is not None and not filtered_geo_ids:
-        return []
+    # Filtros que modifican el conteo de votos (año, votos_tipo, rango) -> cambian el ganador.
+    count_filters = [
+        f for f in filtros
+        if not (f.tipo == "categoria" and getattr(f, "dimension", "agrupacion_nombre") == "agrupacion_nombre")
+    ]
+    # Filtro de partido: restringe qué municipios se muestran (no cambia el color por ganador).
+    party_filters = [
+        f for f in filtros
+        if f.tipo == "categoria" and getattr(f, "dimension", "agrupacion_nombre") == "agrupacion_nombre"
+    ]
 
     base_query = select(
         Hechos_Datos.geografia_id,
@@ -94,8 +89,24 @@ async def get_electoral_metric_data(db: AsyncSession, metric_id: int, filtros: O
         Hechos_Datos.dimension_extra['agrupacion_nombre'].as_string().label("agrupacion_nombre")
     ).where(Hechos_Datos.metrica_id == metric_id)
 
-    if filtered_geo_ids is not None:
-        base_query = base_query.where(Hechos_Datos.geografia_id.in_(filtered_geo_ids))
+    base_query = _apply_filtros(base_query, count_filters)
+
+    if party_filters:
+        geo_sub = (
+            select(Hechos_Datos.geografia_id)
+            .where(Hechos_Datos.metrica_id == metric_id)
+            .distinct()
+        )
+        geo_sub = _apply_filtros(geo_sub, count_filters)
+        for pf in party_filters:
+            geo_sub = geo_sub.where(
+                Hechos_Datos.dimension_extra['agrupacion_nombre'].as_string().in_(pf.valores)
+            )
+        geo_result = await db.execute(geo_sub)
+        geo_ids = set(geo_result.scalars().all())
+        if not geo_ids:
+            return []
+        base_query = base_query.where(Hechos_Datos.geografia_id.in_(geo_ids))
 
     hechos_con_agrupacion_cte = base_query.cte("hechos_con_agrupacion")
 
@@ -148,11 +159,6 @@ async def get_all_generic_data_for_metric(db: AsyncSession, metric_id: int, filt
     """
     Recupera todos los valores para una métrica genérica, con filtros opcionales.
     """
-    filtered_geo_ids = await _get_filtered_geografia_ids(db, filtros)
-
-    if filtered_geo_ids is not None and not filtered_geo_ids:
-        return []
-
     stmt = (
         select(
             Hechos_Datos.geografia_id,
@@ -166,10 +172,31 @@ async def get_all_generic_data_for_metric(db: AsyncSession, metric_id: int, filt
         .where(Hechos_Datos.metrica_id == metric_id)
     )
 
-    if filtered_geo_ids is not None:
-        stmt = stmt.where(Hechos_Datos.geografia_id.in_(filtered_geo_ids))
+    stmt = _apply_filtros(stmt, filtros)
 
     result = await db.execute(stmt)
     rows = result.all()
 
     return [schemas.GenericData.from_orm(row) for row in rows]
+
+
+async def get_metric_opciones(db: AsyncSession, metric_id: int) -> dict:
+    """
+    Devuelve las opciones disponibles de dimensiones para una métrica (partidos, años, tipos de voto),
+    para poblar los selectores de filtro del frontend.
+    """
+    async def _distinct(campo: str) -> list[str]:
+        query = (
+            select(distinct(Hechos_Datos.dimension_extra[campo].as_string()))
+            .where(Hechos_Datos.metrica_id == metric_id)
+        )
+        result = await db.execute(query)
+        valores = [v for v in result.scalars().all() if v]
+        # Orden natural: por longitud y luego alfabético (2017 < 2023, etc.)
+        return sorted(valores, key=lambda x: (len(x), x))
+
+    return {
+        "partidos": await _distinct("agrupacion_nombre"),
+        "años": await _distinct("año"),
+        "votos_tipos": await _distinct("votos_tipo"),
+    }

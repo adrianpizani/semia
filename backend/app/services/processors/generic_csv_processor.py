@@ -6,6 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import Archivo as ArchivoModel, TipoMetrica, Metricas, Hechos_Datos, Dimension_Geografica
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from services.processors.normalizaciones import homologar
+
+# Tamaño de lote para insertar en la DB (dataset pesado: ~1M filas) sin retener todo en memoria.
+BATCH_SIZE = 5000
 
 # Función auxiliar para normalizar texto (pasar a minúsculas y quitar acentos)
 def _normalize_text(text: str) -> str:
@@ -110,6 +114,8 @@ async def process_generic_csv(
         if not value_column_mapped_name:
             raise ValueError("No se encontró la columna de valor designada para el mapeo 'value_identifier'.")
 
+        # Lote de hechos pendientes de insertar (evita retener ~1M objetos y un commit gigante).
+        batch = []
 
         for index, row in df_mapped.iterrows():
             try:
@@ -147,7 +153,7 @@ async def process_generic_csv(
                     # Excluir los identificadores clave y la fecha_dato
                     if col_name not in ["geography_identifier", "value_identifier", "fecha_dato"]:
                         # Convertir valores no nulos a string para almacenamiento JSON
-                        dimension_extra[col_name] = str(col_value) if pd.notna(col_value) else None
+                        dimension_extra[col_name] = homologar(col_name, str(col_value)) if pd.notna(col_value) else None
                 
                 # 4. Crear Hechos_Datos
                 hecho = Hechos_Datos(
@@ -158,14 +164,24 @@ async def process_generic_csv(
                     valor=valor_numerico, # Asegurar tipo numérico
                     dimension_extra=dimension_extra if dimension_extra else None
                 )
-                db.add(hecho)
+                batch.append(hecho)
                 filas_procesadas += 1
+
+                # Commit por lotes para dataset pesado
+                if len(batch) >= BATCH_SIZE:
+                    db.add_all(batch)
+                    await db.commit()
+                    batch = []
 
             except Exception as e:
                 log_entries.append(f"Error en fila {index + 2}: {e}. Datos: {row.to_dict()}")
                 filas_fallidas += 1
         
-        await db.commit() # Commit después de procesar todas las filas
+        # Commit del lote restante
+        if batch:
+            db.add_all(batch)
+            await db.commit()
+
         log_entries.append(f"Procesamiento finalizado. Filas procesadas: {filas_procesadas}, Filas fallidas: {filas_fallidas}.")
 
     except pd.errors.EmptyDataError:

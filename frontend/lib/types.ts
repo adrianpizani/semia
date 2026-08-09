@@ -51,6 +51,9 @@ interface FiltroBase {
 
 export interface FiltroCategorico extends FiltroBase {
   tipo: "categoria";
+  // Dimensión de dimension_extra sobre la que filtra:
+  // 'agrupacion_nombre' (partido), 'año', 'votos_tipo'.
+  dimension: string;
   valores: string[]; // e.g., ["PARTIDO_A", "FRENTE_DE_TODOS"]
 }
 
@@ -60,3 +63,10 @@ export interface FiltroRango extends FiltroBase {
 }
 
 export type AnyFiltro = FiltroCategorico | FiltroRango;
+
+// Opciones disponibles de una métrica para poblar los selectores de filtro.
+export interface MetricaOpciones {
+  partidos: string[];
+  años: string[];
+  votos_tipos: string[];
+}

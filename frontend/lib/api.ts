@@ -136,7 +136,7 @@ export const deleteArchivo = async (archivoId: number) => {
   }
 };
 
-import { AnyFiltro } from './types';
+import { AnyFiltro, MetricaOpciones } from './types';
 
 // ... (other functions remain the same) ...
 
@@ -179,6 +179,20 @@ export const getGenericMetricData = async (metricId: number, filtros?: AnyFiltro
   } catch (error) {
     console.error('Error fetching generic metric data:', error);
     throw error;
+  }
+};
+
+export const getMetricOpciones = async (metricId: number): Promise<MetricaOpciones> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/metricas/${metricId}/opciones`, { cache: 'no-store' });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Network response was not ok for Metric Opciones');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching metric opciones:', error);
+    return { partidos: [], años: [], votos_tipos: [] };
   }
 };
 

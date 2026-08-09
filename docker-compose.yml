@@ -55,5 +55,19 @@ services:
     depends_on:
       - backend
 
+  # --- Servicio 6: Reverse Proxy de entrada (Nginx) ---
+  # Enruta /api/* al backend (sin pasar por el proxy de Next, para uploads grandes)
+  # y / al frontend. Es la entrada recomendada también para el deploy en cloud.
+  nginx:
+    image: nginx:alpine
+    container_name: pba_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+
 volumes:
   postgres_data:

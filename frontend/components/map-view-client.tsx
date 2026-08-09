@@ -1,7 +1,9 @@
 import { MapContainer, GeoJSON, TileLayer, LayersControl } from 'react-leaflet';
 import { useMapView } from '@/hooks/use-map-view';
+import { useMemo } from 'react';
 import type { LatLngExpression } from 'leaflet';
 import { DistritoFeature } from '@/lib/types'; // Importar tipo común
+import { PartyLegend } from '@/components/party-legend';
 
 // --- Tipos de Datos ---
 interface MapViewClientProps {
@@ -46,6 +48,16 @@ export default function MapViewClient({
 
   const showLoading = isDataLoading || isGeoJsonLoading;
 
+  // Partidos presentes en los datos electorales actuales (para la leyenda).
+  const legendParties = useMemo(() => {
+    if (!electoralData) return [];
+    const set = new Set<string>();
+    electoralData.forEach((d: any) => {
+      d?.resultados?.forEach((r: any) => set.add(r.partido));
+    });
+    return Array.from(set).sort();
+  }, [electoralData]);
+
   return (
     <div className="relative h-full w-full">
       <MapContainer
@@ -83,6 +95,10 @@ export default function MapViewClient({
           </LayersControl.Overlay>
         </LayersControl>
       </MapContainer>
+
+      {!showLoading && legendParties.length > 0 && (
+        <PartyLegend parties={legendParties} />
+      )}
 
       {showLoading && (
         <div className="absolute inset-0 bg-gray-100 bg-opacity-75 flex items-center justify-center z-[1000]">

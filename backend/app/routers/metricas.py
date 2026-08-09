@@ -57,6 +57,17 @@ async def get_electoral_data(
     
     return data
 
+@router.get("/{metric_id}/opciones", response_model=schemas.MetricaOpciones)
+async def get_metric_opciones(metric_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Devuelve las opciones disponibles (partidos, años, tipos de voto) para poblar
+    los selectores de filtro de una métrica.
+    """
+    metric = await db.get(MetricasModel, metric_id)
+    if not metric:
+        raise HTTPException(status_code=404, detail="Metrica no encontrada")
+    return await metrica_service.get_metric_opciones(db, metric_id)
+
 @router.post("/{metric_id}/datos-genericos", response_model=List[schemas.GenericData])
 async def get_generic_data_for_metric(
     metric_id: int, 

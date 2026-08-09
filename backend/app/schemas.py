@@ -70,6 +70,9 @@ class FiltroBase(BaseModel):
 
 class FiltroCategorico(FiltroBase):
     tipo: Literal["categoria"] = "categoria"
+    # Dimensión de `dimension_extra` sobre la que filtra.
+    # Default 'agrupacion_nombre' (partido) para compatibilidad; también puede ser 'año' o 'votos_tipo'.
+    dimension: str = "agrupacion_nombre"
     valores: list[str] # e.g., ["PARTIDO_A", "FRENTE_DE_TODOS"]
 
 class FiltroRango(FiltroBase):
@@ -88,6 +91,12 @@ class GeoDataRequest(BaseModel):
 
 class FilterRequest(BaseModel):
     filtros: list[AnyFiltro] | None = None
+
+# Opciones disponibles de dimensiones para poblar los selectores de filtro del frontend.
+class MetricaOpciones(BaseModel):
+    partidos: list[str] = []
+    años: list[str] = []
+    votos_tipos: list[str] = []
 
 # --- Electoral Metric Data ---
 

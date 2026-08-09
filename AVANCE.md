@@ -11,6 +11,12 @@ Documento vivo que unifica el estado actual, los bugs conocidos, las decisiones 
 
 **Sesión del 8 de agosto de 2026:** se elimina la ruta `/mapa-electoral` por duplicación con `/` (lógica replicada de mapa, hooks y handlers que generaba regresiones con cada fix). `DashboardCharts` se reduce a su BarChart dinámico de distribución de votos y se integra en `app/page.tsx`. La ruta `/` queda como única superficie del dashboard.
 
+**Sesión del 8 de agosto de 2026 (tarde):** foco en **data pesada + filtros electorales + leyenda**.
+- **Uploads grandes y procesado:** se agrega `nginx` como reverse proxy de entrada (`/api/*` → backend directo, `client_max_body_size 300m`; `nginx/nginx.conf`) para no pasar los 95 MB por el buffer/`10MB` de Next. Se detectó que `electoral_csv_processor.py` (y el socioeconómico/PBG) son **código muerto**: la carga real pasa SIEMPRE por `generic_csv_processor` (una métrica por `metric_name` del `Procesador`). Se creó `normalizaciones.py` (registro central de **homologaciones** por columna: `cargo_nombre`, `votos_tipo`; extensible para futuros archivos) y se agregó **batching** al `generic_csv_processor`. Carga del CSV completo (95 MB / ~944 mil filas) OK, aunque lenta → pendiente de optimización (ya anotado más abajo).
+- **Filtros electorales (año + tipo + partido):** `FiltroCategorico` ahora lleva `dimension` (default `agrupacion_nombre`). Backend aplica filtros en la agregación (el ganador del mapa recalculado según año/tipo); `GET /metricas/{id}/opciones` devuelve partidos/años/tipos disponibles. Default de tipo = `POSITIVO` (votos válidos; corrige que el ganador sumaba nulos/en blanco). Los filtros electorales **no se aplican a métricas genéricas** secundarias (cruce con PBG sano).
+- **Leyenda de partidos:** overlay de React (`components/party-legend.tsx`) con swatches + paleta determinística por hash en `lib/party-color.ts` (compartida con el mapa, evita que la elección completa de 21 partidos quede toda en gris).
+- Aún pendiente de decisiones: semántica del color por partido (hoy = ganador; alternativa mapa de presencia/intensidad) y limpiar `experimental.proxyClientMaxBodySize` de `next.config.mjs` (quedó como fallback).
+
 ---
 
 ## 📌 Resumen ejecutivo
@@ -91,8 +97,10 @@ Metricas ┘           ▲
   - PBG (una métrica por partido).
 - [x] **Mapa interactivo**: doble capa (municipios como base, circuitos como overlay activable), coloreado por partido ganador, popups con resultados, hover con highlight.
 - [x] **Filtros dinámicos**:
-  - Categóricos (por partido político en métricas ELECTORAL).
+  - Categóricos por `dimension` (configurable): partido (`agrupacion_nombre`), `año` y `votos_tipo` para métricas ELECTORAL (default tipo = `POSITIVO`).
   - Rango (slider para métricas ECONOMICA).
+  - Endpoint `GET /metricas/{id}/opciones` para poblar los selectores.
+  - Los filtros electorales NO se aplican a métricas genéricas secundarias (cruce con PBG/socio sano).
 - [x] **Métrica principal + métricas secundarias**: la principal colorea el mapa, las secundarias aparecen en cards.
 - [x] **Vista de reporte** (`/graficos`): cruce electoral + métrica genérica en `ComposedChart`.
 - [x] **Auto-creación de procesador**: modal que detecta encabezados no matcheados y permite definir el mapeo.
