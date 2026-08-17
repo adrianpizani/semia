@@ -34,6 +34,13 @@ docker exec -it pba_backend bash -c "PYTHONPATH=/ python -m app.scripts.import_g
 docker exec -it pba_backend bash -c "PYTHONPATH=/ python -m app.scripts.import_circuitos"
 ```
 
+Create the initial admin user (idempotent):
+
+```bash
+docker exec -it pba_backend bash -c "PYTHONPATH=/ python -m app.scripts.create_admin"
+# defaults: admin@walicho.local / admin123 (override via ADMIN_EMAIL / ADMIN_PASSWORD env)
+```
+
 ### Frontend dev (without Docker for the frontend)
 
 ```bash
@@ -163,7 +170,7 @@ These are not bugs, just things the next agent should know are mid-flight:
 - **API-client dual strategy**: `lib/api.ts` uses Next rewrites (relative `''`), `hooks/use-processors.ts` uses `NEXT_PUBLIC_API_BASE_URL` direct. Unify before adding new endpoints.
 - **Geographical-level terminology mismatch**: backend uses `Partido`/`Circuito`; `create-processor-modal.tsx` lists `["Circuito", "Seccion", "Partido", "Municipio"]`. "Municipio" and "Partido" are synonyms (one row each) — collapse them.
 - **`/graficos` still ships mocked datasets** (`participationTrendData`, `defaultPartyComparisonData`, etc.); replace with real queries once the corresponding endpoints exist.
-- **No tests, no CI, no auth yet.** The roadmap in `AVANCE.md` orders: auth (JWT, simple admin/viewer) → AWS free-tier deploy → GitHub Actions CI/CD → analytics features → external sources → IA microservice (long horizon).
+- **No tests, no CI yet.** The roadmap in `AVANCE.md` orders: auth (JWT, simple admin/viewer) → AWS free-tier deploy → GitHub Actions CI/CD → analytics features → external sources → IA microservice (long horizon). Auth is now implemented (see "Auth" below).
 
 ## Useful pointers
 
@@ -171,3 +178,20 @@ These are not bugs, just things the next agent should know are mid-flight:
 - Adding a new metric type? Extend `TipoMetrica` (backend enum + frontend `TipoMetricaEnum`) and decide whether `metrica_service` needs a new query path (mirroring `get_electoral_metric_data`).
 - Adding a new geo level? Update `NIVELES_GEOGRAFICOS` in `create-processor-modal.tsx`, add a matching importer under `backend/app/scripts/`, and decide whether the new level needs its own GeoJSON endpoint and a new `LayersControl.Overlay`.
 - For 5MB+ uploads, go through nginx (port 80), not the Next.js proxy — the rewrites route buffers in memory with the configured `experimental.proxyClientMaxBodySize` (250 MB) and nginx has `client_max_body_size 300m`.
+
+## Auth (JWT + httpOnly cookie) — added 2026-08
+
+- **Approach:** self-hosted JWT. No third-party provider. Password hashing with `bcrypt`, tokens with `PyJWT` (HS256). Roles: `admin` (escritura/gestión) and `viewer` (solo lectura).
+- **Backend** (`backend/app/`):
+  - `security.py`: `hash_password`/`verify_password`, `create_access_token`/`decode_token`, cookie settings (`COOKIE_NAME`, `SECRET_KEY`, `COOKIE_SECURE`, `ACCESS_TOKEN_EXPIRE_MINUTES`).
+  - `dependencies.py`: `get_current_user` (lee el JWT de la cookie `access_token` o del header `Authorization`) y `require_admin` (403 para los que no son admin).
+  - `models.Usuario` (`usuarios`): `email`, `password_hash`, `nombre`, `rol`, `activo`, `created_at`, `last_login`. La tabla se crea sola con `create_all` en startup.
+  - `routers/auth.py`: `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/register` (solo admin). `login` setea la cookie httpOnly.
+  - Todo endpoint existente está protegido: lecturas → `get_current_user`; escrituras (subir/borrar archivo, procesadores, toggle de métricas, crear geografía) → `require_admin`.
+- **Frontend** (`frontend/`):
+  - `proxy.ts` (Next 16 renombró `middleware.ts` → `proxy.ts`): **nada se ve sin login** — valida el JWT (firma HS256 + `exp`) con `node:crypto` y redirige a `/login`; si ya autenticado pide `/login`, va a `/`.
+  - `app/login/page.tsx`: pantalla de login (email/password); `AuthShell` (`components/auth-shell.tsx`) oculta el sidebar en `/login`.
+  - `hooks/use-session.ts` + `lib/api.ts` (`getMe`/`login`/`logout`): estado del usuario; `app-sidebar.tsx` muestra email/rol, botón de logout, y oculta las acciones de admin (archivos, métricas, configuración) para `viewer`.
+  - `hooks/use-processors.ts` apunta a `localhost:8000` (cross-origin) y ahora envía `credentials: "include"`. `lib/api.ts` usa rutas relativas via rewrites (mismo origen) así que la cookie viaja sola.
+- **Secrets:** `SECRET_KEY` / `AUTH_SECRET` deben coincidir en backend y frontend (ver `.env.example`). Con HTTPS en producción, setear `COOKIE_SECURE=true`.
+- **Fuera de alcance (confirmado):** login social, recuperación de password, MFA, refresh tokens, rate limiting.

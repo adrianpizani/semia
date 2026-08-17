@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routers import geografia, archivos, metricas, procesadores
+from routers import geografia, archivos, metricas, procesadores, auth
 
 app = FastAPI(title="Dashboard PBA Backend")
 
@@ -29,6 +29,7 @@ async def startup():
         await conn.run_sync(Base.metadata.create_all) # Asegura que las tablas existan
 
 # Incluir routers
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(geografia.router, prefix="/api/v1")
 app.include_router(archivos.router, prefix="/api/v1")
 app.include_router(metricas.router, prefix="/api/v1")

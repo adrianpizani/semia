@@ -70,3 +70,12 @@ export interface MetricaOpciones {
   años: string[];
   votos_tipos: string[];
 }
+
+// Usuario autenticado (coincide con el schema Usuario del backend).
+export interface Usuario {
+  id: number;
+  email: string;
+  nombre: string | null;
+  rol: "admin" | "viewer";
+  activo: boolean;
+}

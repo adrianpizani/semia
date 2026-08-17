@@ -9,3 +9,5 @@ openpyxl
 pydantic[email]
 shapely # Added for GeoJSON processing
 python-multipart # Required for FastAPI form data (file uploads)
+PyJWT # Auth: emisión y validación de tokens JWT
+bcrypt # Auth: hashing seguro de contraseñas

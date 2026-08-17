@@ -6,11 +6,15 @@ from schemas import Archivo
 from database import get_db
 from services import archivo_service, upload_service
 from models import Archivo as ArchivoModel, TipoMetrica # Importar el modelo y el Enum
+from dependencies import get_current_user, require_admin
 
 router = APIRouter(tags=["Archivos"])
 
 @router.get("/archivos", response_model=List[Archivo])
-async def list_archivos(db: AsyncSession = Depends(get_db)):
+async def list_archivos(
+    db: AsyncSession = Depends(get_db),
+    _user = Depends(get_current_user),
+):
     """
     Retrieves a list of all uploaded file records.
     """
@@ -20,6 +24,7 @@ async def list_archivos(db: AsyncSession = Depends(get_db)):
 async def upload_archivo(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    _admin = Depends(require_admin),
     file: UploadFile = File(...),
     nombre_visible: str = Form(...),
     descripcion: str = Form(None),
@@ -54,7 +59,11 @@ async def upload_archivo(
     return db_archivo
 
 @router.delete("/archivos/{archivo_id}", status_code=204)
-async def delete_archivo(archivo_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_archivo(
+    archivo_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin = Depends(require_admin),
+):
     """
     Deletes an archivo record.
     """

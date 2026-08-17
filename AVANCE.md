@@ -19,13 +19,29 @@ Documento vivo que unifica el estado actual, los bugs conocidos, las decisiones 
 
 **Sesión del 8 de agosto de 2026 (última parte):** foco en **filtro de rango económico + cruce entre métricas**.
 - **Filtro de rango económico reescrito** (PBG y futuras métricas económicas), ahora **data-driven**. Nuevo `lib/range-utils.ts` con `decideScale` (si `max/min ≥ 100` → escala **log**, si no **lineal**), `formatCompact` (es-AR), y mapeo posición↔valor. El `RangeFilter` usa la escala detectada, guarda la **ventana del usuario en valores absolutos** (no se resetea al filtrar), muestra `min/max` + rango elegido debajo del slider, más toggle de **Escala (Log/Lineal)** y botón **Limpiar**. `metricRanges` se calcula de la data **SIN filtrar** (una vez por métrica) para tener base fija.
-- **Cruce entre métricas (intersección de geografías):** en `metrica_service.py`, el endpoint electoral separa los filtros por `metrica_id`. Los del propio métrico se aplican a los votos (año/tipo/partido); los de **otros métricos** (p. ej. rango de PBG) van a `_geos_for_filter` y restringen los municipios del mapa a quienes cumplen en **su propia métrica** (el resto en gris). Ej: filtrar rango de PBG restringe el mapa electoral a los municipios en ese rango económico.
+- **Cruce entre métricas (intersección de geografías):** en `metrica_service.py`, el endpoint electoral separa los filtros por `metrica_id`. Los del propio métrico se aplican a los votos (año/tipo/partido); los de **otros métricos** (p.j. rango de PBG) van a `_geos_for_filter` y restringen los municipios del mapa a quienes cumplen en **su propia métrica** (el resto en gris). Ej: filtrar rango de PBG restringe el mapa electoral a los municipios en ese rango económico.
 - **Plan para generalizar el cruce a TODAS las métricas (pendiente):**
   1. **Unificar el "geo set por filtro"** en una función compartida y usarla también al restringir las cards secundarias (misma lógica de cruce en todo).
   2. **Soportar filtros temporales** (`fecha_dato`) además de `valor`/`dimension_extra`.
   3. **Filtros categóricos genéricos** (UI + backend) para métricas no electorales (ya existe el campo `dimension`).
   4. **Jerarquía geográfica / roll-up** (circuito → partido) si alguna métrica es de otro nivel, para que el cruce siga válido.
 - **Para probar en vivo:** el cruce PBG→mapa necesita reiniciar el backend (`docker compose restart backend`). Pendiente de valorar si los municipios excluidos se **atenúan** o **desaparecen** del mapa.
+
+**Sesión del 9 de agosto de 2026:** foco en **demo stabilisation + UX/UI del dashboard**.
+- **"Limpiar filtros" resetea sliders visuales:** el `RangeFilter` mantiene la ventana del usuario (`win`) en estado local, así que limpiar el array de filtros en el padre no reseteaba la posición visual del slider. Se agregó prop `resetSignal?: number` al `RangeFilter` y un contador `rangeResetSignal` en el `FilterBar` que se incrementa en cada "Limpiar filtros" → la `win` vuelve a `[min, max]` mientras que la elección de `scaleMode` se preserva (decisión de diseño: la escala es del usuario, no del reset).
+- **Card "Reportar Municipio" eliminada:** no se usa y llevaba a `/graficos` con mocks. Se quitaron `handleReportClick`, `useRouter`, `Button`, y `FileText` del import; no quedan referencias huérfanas.
+- **Card "Indicadores seleccionados" siempre visible cuando hay municipio:** antes se ocultaba si el filtro de rango vaciaba las secundarias (el usuario perdía el feedback de qué municipio tenía seleccionado). Ahora aparece siempre que hay `selectedMunicipio`, con texto guía amigable si no hay secundarias cargadas.
+- **Layout de la columna derecha:** Resultados + Indicadores seleccionados pasan a un `grid grid-cols-2 gap-4` lado a lado (antes apilados). Las cards se compactan con tipografía de etiqueta (`text-sm uppercase tracking-wide`) y padding reducido (`pb-2 pt-4`) para que la densidad visual sea pareja.
+- **Transición de color en el mapa:** cuando cambian los filtros, los municipios ya no "saltan" de color. `path.walicho-municipio` transiciona `fill` y `fill-opacity` en 250ms; la variante `--instant` (hover/selección) corta la transición para feedback inmediato. Costo: 4 líneas en `globals.css` + `className` en `getStyleMunicipio`.
+- **Sparkline evaluada y retirada:** se implementó `GET /metricas/{id}/serie-historica/{geo_id}` en backend y un componente `Sparkline` en frontend que mostraba la tendencia 2017-2023 del partido más votado por municipio. Se decidió retirarla por **lectura ambigua**: la subida podía ser crecimiento del padrón electoral, no performance política, y el cliente la encontró ruidosa. El endpoint queda en backend por si lo queremos reutilizar para otra vista (tooltip del mapa, `/graficos`, export).
+- **`generate_socioeconomico_realista.py`:** script que genera un CSV socioeconómico con 4 arquetipos (AMBA_POPULAR, INTERIOR_RICO, CIUDAD_GRANDE, INTERIOR_POBRE) y correlaciones internas para que los filtros socioeconómicos produzcan cambios visibles al cruzarse con el mapa electoral. Reemplaza al mock plano anterior.
+
+**Sesión del 13 de agosto de 2026 — Etapa 3.1 (Autenticación) arrancada (~funcionando):**
+- **Backend** (`backend/app/`): `security.py` (hashing bcrypt + PyJWT HS256; `SECRET_KEY`, `COOKIE_SECURE`, `ACCESS_TOKEN_EXPIRE_MINUTES` por env), `dependencies.py` (`get_current_user` / `require_admin`), tabla `usuarios` (`models.Usuario`, se crea sola en startup), `routers/auth.py` (`POST /auth/login` → cookie httpOnly JWT, `POST /auth/logout`, `GET /auth/me`, `POST /auth/register` solo admin), `scripts/create_admin.py`.
+- **Rutas protegidas:** lecturas → `get_current_user`; escrituras (subir/borrar archivo, procesadores, toggle de métricas, crear geografía) → `require_admin`. **Nada queda público.**
+- **Frontend** (`frontend/`): `proxy.ts` (Next 16 renombró `middleware.ts` → `proxy.ts`) valida el JWT con `node:crypto` y **redirige a `/login` sin sesión** (excluye `/api/*`, lo protege el backend); `app/login/page.tsx`, `components/auth-shell.tsx` (oculta sidebar en `/login`), `hooks/use-session.ts`, `login`/`getMe`/`logout` en `lib/api.ts`, `app-sidebar.tsx` con email/rol/logout y gating de admin para `viewer`. `use-processors.ts` suma `credentials:"include"`.
+- **Infra:** `.env.example`, `database.py` lee `DATABASE_URL` por env, `docker-compose.yml` inyecta `SECRET_KEY`/`AUTH_SECRET` (fallback común), `requirements.txt` agrega `PyJWT` + `bcrypt`.
+- **Nota / pendiente (a cargo del usuario):** `EmailStr` rechaza dominios `*.local`; se definió en `schemas.py` un tipo local `Email` (permite `.local`) pero aún no reemplaza `EmailStr` en `UsuarioCreate`/`Usuario`/`LoginRequest`. Usar dominio real para el admin (`admin@walicho.com`). Validación restante: flujo login → dashboard → logout completo.
 
 ---
 
@@ -44,6 +60,7 @@ WALICHO es un dashboard de análisis político sobre la PBA con mapa interactivo
 | API Meta Business          | Priorizado para próximas etapas                               |
 | Bug crítico abierto        | `selectedMunicipio` undefined en cadena de props del mapa     |
 | Próxima sesión             | Plan pre-demo martes (estabilidad + pulido)                   |
+| Autenticación             | Etapa 3.1 implementada (~funcionando) — JWT + cookie httpOnly         |
 | Orientación confirmada     | Auth → Deploy AWS → CI/CD → Visualización → Fuentes → IA      |
 
 ---
@@ -402,6 +419,137 @@ Consideraciones generales:
 | `pbg_por_partido_2023.csv`                           | 3 KB    | PBG 2023                                                      |
 | `poblacion-con-ingresos-por-debajo-linea-pobreza-eph-continua.csv` | 11 KB | EPH continua (por aglomerado, no por partido PBA directo) |
 | `propuesta.docx`                                     | 8 KB    | Propuesta original del proyecto                               |
+
+---
+
+## 🎯 Recomendaciones para próximas iteraciones (sesión 9-ago-2026)
+
+Ordenadas por **impacto en demo / costo de implementación**. Las primeras son cosas que podrían hacerse en una sesión corta antes de la próxima demo; las últimas son apuestas más grandes.
+
+### Tier 1 — Bajo costo, alto impacto visual (1 sesión cada una)
+
+1. **Tooltip enriquecido en hover del mapa.** Hoy el tooltip muestra solo el nombre del municipio. Agregar el valor de la métrica principal + las secundarias cargadas, en formato corto (`CAMBIEMOS 42.3% · PBG $1.2M`). El backend ya devuelve todo, solo hay que engancharse al `mouseover` de react-leaflet y leer del cache `secondaryMetricsData` que ya vive en `page.tsx`. **Costo real: ~30 líneas.**
+
+2. **Hover preview en métricas secundarias.** Al hover sobre un item de "Indicadores seleccionados", mostrar tooltip con el percentil/ranking del municipio en la provincia (top 20%, mediana, etc.). Requiere una query agregada nueva en backend pero es barata: `SELECT geografia_id, valor, percent_rank() OVER (ORDER BY valor) FROM hechos_datos WHERE metrica_id = ?`. **Costo: 1 endpoint + 1 componente.**
+
+3. **Mapa coroplético alternativo (intensidad de presencia).** Hoy el mapa se colorea por **ganador**. Una segunda capa seleccionable "Intensidad por partido" podría teñir municipios con un gradient según el % de ese partido (no solo el ganador). El backend ya devuelve `resultados[].votos` por municipio; alcanza con cambiar el `style` para leer un partido específico del selector. **Costo: 30 líneas en el hook + 1 selector.**
+
+4. **Atenuar vs. esconder los municipios excluidos por cruce.** Hoy cuando filtrás por PBG, los municipios fuera del rango quedan **grises**. Decidir si se quedan visibles atenuados (mejor narrativa: "estos quedaron fuera") o desaparecen (más limpio). Es solo un toggle en `getStyleMunicipio`. **Costo: 1 línea + decisión.**
+
+### Tier 2 — Mejoras estructurales (medio plazo)
+
+5. **Resolver la inconsistencia API client dual.** `lib/api.ts` usa rewrites de Next; `hooks/use-processors.ts` usa `NEXT_PUBLIC_API_BASE_URL` directo. Antes de agregar más endpoints, unificar en rewrites (más portable a deploys). **Costo: 1 archivo.**
+
+6. **Collapsar la inconsistencia de niveles geográficos.** Backend usa `Partido`/`Circuito`; el modal frontend incluye `"Seccion"` y `"Municipio"` (sinónimos/partidos rotos). Homologar a `Partido`/`Circuito` en el modal y agregar una migración si hay datos viejos. **Costo: 1 línea + decisión.**
+
+7. **Cachear `metricRanges` en backend.** Hoy se fetchean los rangos por métrica con un query sin filtros cada vez que se selecciona. Calcular una sola vez al subir el archivo y guardarlos en `metricas` (columnas `valor_min`, `valor_max`, `escala_sugerida`). **Costo: 1 migración + actualizar `upload_service`.**
+
+8. **Filtros categóricos genéricos para métricas no electorales.** El backend ya tiene el campo `dimension` en `FiltroCategorico`; falta el UI para mostrar el selector cuando la métrica no es electoral (ej: filtrar socioeconómico por región, por sector PBG). **Costo: ~1 sesión.**
+
+9. **Tooltip inteligente con insights.** Cuando el usuario aplica un filtro, mostrar un mini resumen: "5 municipios cumplen este criterio (top 5: La Matanza, La Plata, Mar del Plata, Bahía Blanca, Pilar)". Calculable en backend en el mismo query. **Costo: 1 endpoint nuevo.**
+
+### Tier 3 — Diferenciadores (cuando el producto esté estable)
+
+10. **Cruces pre-armados ("Recetas de demo").** Botones rápidos en la barra de filtros: "Pobreza × Resultado", "PBG Industrial × Votos", etc. Cada receta aplica 2-3 filtros preconfigurados para demos guiadas sin que el usuario tenga que descubrir las correlaciones. **Costo: tabla nueva `recetas` + UI simple.**
+
+11. **Hover tooltip histórico con selector de año.** Tomar el endpoint `/serie-historica/{geo_id}` (ya implementado, quedó disponible) y mostrar un mini comparativo 2017/2019/2021/2023 en el tooltip del municipio, **mostrando el % (no los absolutos)** para corregir el problema de interpretación que tenía la sparkline. **Costo: 1 componente + usar el endpoint.**
+
+12. **Vista `/graficos` conectada a datos reales.** Hoy tiene 4 datasets mock. Reemplazar con queries al backend: tendencia de participación por sección, ranking de municipios por métrica, scatter PBG×resultado. **Costo: ~2-3 sesiones, alto impacto para "esto es un producto, no un prototipo".**
+
+13. **Comparador entre municipios.** Selección múltiple + vista side-by-side de N municipios en una tabla. Útil para responder "¿cómo se compara La Matanza con sus vecinos del conurbano sur?". **Costo: 2 sesiones.**
+
+14. **Exportar vista actual a PNG/PDF.** `html2canvas` + endpoint que genere un PDF con el mapa + cards. Para el cliente es WOW factor en una demo. **Costo: 1 sesión.**
+
+### Decisiones pendientes (no técnicas, hay que conversarlas)
+
+- **Semántica del color del mapa.** ¿Ganador (hoy), % de votos del ganador, intensidad de presencia del partido seleccionado, o un heatmap del cruce con la secundaria activa? Cada opción cuenta una historia distinta.
+- **Atenuar vs. esconder municipios excluidos** (item #4).
+- **¿Vale la pena mantener `/graficos` como ruta aparte?** O se consolida como un modal/fullscreen dentro de `/`. La ruta aparte está subutilizada y seMocks carga trabajo.
+
+### Lo que NO recomiendo hacer pronto
+
+- **Microservicio de IA** (Etapa 5 del roadmap): tentador pero prematura. Sin auth, sin deploy, sin variedad de datos, el agente no tiene con qué aportar. Construir sobre arena.
+- **Auth + AWS + CI/CD** en simultáneo: cada uno es un mini-proyecto. Hacer uno, validarlo, después el siguiente.
+- **Optimizar el `generic_csv_processor`** mientras siga entrando por background task y el cliente esté conforme. La carga de 95 MB ya funciona; la mejora de velocidad es nice-to-have, no diferenciador.
+
+---
+
+## 🧪 Visualizador de cruzamientos — propuesta para validación con cliente (sesión 9-ago-2026)
+
+**Estado:** Diseñado, no implementado. **Decisión:** esperar feedback del cliente antes de construir.
+
+### Contexto
+
+Hoy el cruce entre métricas funciona de forma **binaria por filtro**: elegís primaria (colorea el mapa) + rango de secundaria (atenúa municipios). Sirve para responder "¿qué pasa si filtro X?" pero **no revela correlaciones**. La visualización de cruce explícita es lo que falta para que el dashboard pase de "herramienta de filtrado" a "herramienta de descubrimiento".
+
+### Endpoint base (común a todas las opciones)
+
+`POST /api/v1/metricas/cruzar` recibe `(metrica_principal_id, metrica_secundaria_id, filtros)` y devuelve:
+
+```json
+{
+  "puntos": [{"geografia_id": 1, "geografia_nombre": "La Matanza", "x": 145000.0, "y": 47.3, "partido": "UNIDAD CIUDADANA"}, ...],
+  "correlacion_pearson": -0.34,
+  "metrica_x": {"nombre": "PBG per cápita", "min": ..., "max": ...},
+  "metrica_y": {"nombre": "% Diputado ganador", "min": ..., "max": ...}
+}
+```
+
+Un punto por municipio con datos en ambas métricas. Pearson calculado sobre el set completo (o sobre el subconjunto filtrado, según variante). Costo backend: ~80 líneas, sin tocar modelo de datos.
+
+### Opciones de visualización para elegir con el cliente
+
+Cada opción es **independiente** (se puede combinar más de una si el cliente quiere). Costo indicado en sesiones.
+
+#### Opción A — Scatter plot básico embebido (mínima viable)
+
+Sección abajo del grid 2-cols existente en `app/page.tsx`. Solo aparece cuando hay primaria electoral + secundaria numérica activa. Scatter: X = secundaria, Y = % del partido ganador, color del punto = partido ganador. Pearson numérico al costado.
+
+- **Pros:** el más rápido de implementar. Demuestra el cruce sin agregar navegación.
+- **Contras:** no conecta con el mapa (no hay hover bidireccional). Lectura local.
+- **Costo:** ~1 sesión. Backend + componente scatter.
+- **Para el cliente:** "¿Querés ver la relación entre dos métricas en un solo gráfico?"
+
+#### Opción B — Scatter + hover bidireccional con el mapa (recomendada)
+
+Todo lo de A, **más**: hover sobre un punto del scatter → highlight del municipio en el mapa y viceversa. Hover sobre un municipio del mapa → highlight del punto en el scatter.
+
+- **Pros:** cuenta la historia completa ("este municipio está acá en el cruce, acá en el ranking, y pintado así en el mapa"). Es el "ah, mirá esto" de una demo.
+- **Contras:** el cableado del hover state compartido entre Leaflet y React es la parte más fina (puede haber races). Si se complica, se degrada a hover local sin propagar.
+- **Costo:** ~1.5 sesiones. Backend + scatter + integración con mapa.
+- **Para el cliente:** "¿Querés poder tocar un punto del cruce y ver el municipio iluminado en el mapa al mismo tiempo?"
+
+#### Opción C — A + top 10 ranking (top del cruce)
+
+A, **más** un panel "Top 10 del cruce": ranking de municipios por una métrica compuesta (default: % del partido ganador, secundaria como filtro implícito). Reordenable.
+
+- **Pros:** el cliente siempre tiene un "qué mirar primero". Útil cuando el cruce tiene muchos puntos.
+- **Contras:** agrega una decisión de diseño sobre qué es la "métrica compuesta" (% simple, score normalizado, ratio contra mediana?). No es trivial.
+- **Costo:** ~2 sesiones. Backend + scatter + top 10.
+- **Para el cliente:** "¿Querés que te diga qué municipios son los más interesantes de este cruce sin que tengas que adivinar?"
+
+#### Opción D — Modal fullscreen / ruta `/cruzamientos` (experiencia completa)
+
+Todo lo de B + C, pero en una vista aparte (modal fullscreen o ruta dedicada). Los selects de primaria/secundaria arriba, las tres ventanas abajo: scatter, top 10, y un mini-mapa que muestra solo los municipios del cruce (no el mapa completo).
+
+- **Pros:** experiencia de "análisis activo". El cliente juega con los selects y ve cómo se reconfiguran las tres ventanas en tiempo real. Diferenciador claro contra cualquier competidor.
+- **Contras:** es la más cara. Reestructura la página o agrega navegación. Tiempo total ~3 sesiones.
+- **Costo:** ~3 sesiones. Backend + todo lo anterior + modal/ruta + integración.
+- **Para el cliente:** "¿Querés una vista aparte dedicada al análisis, o alcanza con una sección abajo del dashboard actual?"
+
+### Mi recomendación
+
+**Empezar con la B** (scatter + hover bidireccional). Es el sweet spot de impacto/costo para una demo, y deja el terreno preparado para agregar C y D después sin reescribir.
+
+Si el cliente pide "wow" antes que profundidad: **D completa** (vale la pena el costo extra).
+
+Si el cliente es conservador o quiere ver resultados rápido: **A**, y en la sesión siguiente upgradeamos a B.
+
+### Limitaciones a comunicar honestamente
+
+- **Rendimiento:** el cruce con municipios (135 puntos) anda bien. Con circuitos (~7000 puntos) puede pasar de 200ms a 1-2s sin caché; queda en backlog.
+- **Pearson sobre datos filtrados** puede ser engañoso si el filtro deja menos de 10 puntos. Hay que mostrarlo con un disclaimer o un mínimo.
+- **El scatter no es un scatter temporal:** no muestra evolución por año. Si el cliente pide eso, es otro endpoint (usar el de `/serie-historica` que ya quedó implementado).
 
 ---
 
