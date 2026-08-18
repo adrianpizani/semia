@@ -1,7 +1,7 @@
 # Dockerfile de producción para el backend (FastAPI).
 # - libpq-dev: requerido por psycopg2-binary en tiempo de build (algunos wheels).
 # - libgeos-dev: requerido por shapely/GeoAlchemy2.
-# - 4 workers uvicorn para un t3.micro; ajustar según RAM disponible en EC2.
+# - 2 workers uvicorn por default (UVICORN_WORKERS). En t3.micro no subir a 4.
 #
 # Estructura del código: backend/app/main.py (FastAPI). Los imports del proyecto
 # son PLANOS (`from database import ...`, `from routers import ...`), asumiendo
@@ -14,7 +14,7 @@
 #
 # Variables de entorno que se esperan (pasadas vía docker-compose):
 #   DATABASE_URL, SECRET_KEY, AUTH_SECRET, COOKIE_SECURE,
-#   ACCESS_TOKEN_EXPIRE_MINUTES, ADMIN_EMAIL, ADMIN_PASSWORD
+#   ACCESS_TOKEN_EXPIRE_MINUTES, ADMIN_EMAIL, ADMIN_PASSWORD, UVICORN_WORKERS
 
 FROM python:3.11-slim
 
@@ -64,6 +64,5 @@ USER appuser
 EXPOSE 8000
 
 ENTRYPOINT ["/entrypoint.sh"]
-# En prod: uvicorn con --workers. En t3.micro (1GB RAM) con 4 workers y ~150MB por worker
-# queda ~600MB para DB cache + sistema. Si hay OOM, bajar a 2.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# Workers via UVICORN_WORKERS (default 2). sh -c para expandir el env.
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-2}"]

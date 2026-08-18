@@ -1,6 +1,16 @@
 # AVANCE — Estado del proyecto WALICHO
 
-Documento vivo que unifica el estado actual, los bugs conocidos, las decisiones tomadas y las proyecciones de las próximas etapas. Reemplaza y consolida los siguientes archivos previos:
+Bitácora viva: estado, bugs, decisiones y roadmap. No es la guía de uso ni el runbook de deploy.
+
+| Archivo | Rol |
+|---------|-----|
+| [`README.md`](./README.md) | Cómo correr el proyecto (usuario) |
+| [`DEPLOY.md`](./DEPLOY.md) | Plan y runbook del deploy AWS |
+| este archivo | Qué se hizo, qué falta, por qué |
+
+`CLAUDE.md` se retiró (18-ago-2026): duplicaba README + esta bitácora.
+
+Reemplaza y consolida los siguientes archivos previos:
 
 - `avance.md` (definición de visión, 7-nov-2025 y 11-nov-2025)
 - `todo.md` (sesión del 13-nov-2025)
@@ -37,17 +47,24 @@ Documento vivo que unifica el estado actual, los bugs conocidos, las decisiones 
 - **`generate_socioeconomico_realista.py`:** script que genera un CSV socioeconómico con 4 arquetipos (AMBA_POPULAR, INTERIOR_RICO, CIUDAD_GRANDE, INTERIOR_POBRE) y correlaciones internas para que los filtros socioeconómicos produzcan cambios visibles al cruzarse con el mapa electoral. Reemplaza al mock plano anterior.
 
 **Sesión del 13 de agosto de 2026 — Etapa 3.1 (Autenticación) arrancada (~funcionando):**
-- **Backend** (`backend/app/`): `security.py` (hashing bcrypt + PyJWT HS256; `SECRET_KEY`, `COOKIE_SECURE`, `ACCESS_TOKEN_EXPIRE_MINUTES` por env), `dependencies.py` (`get_current_user` / `require_admin`), tabla `usuarios` (`models.Usuario`, se crea sola en startup), `routers/auth.py` (`POST /auth/login` → cookie httpOnly JWT, `POST /auth/logout`, `GET /auth/me`, `POST /auth/register` solo admin), `scripts/create_admin.py`.
+- **Backend** (`backend/app/`): `security.py` (hashing bcrypt + PyJWT HS256; `SECRET_KEY`, `COOKIE_SECURE`, `ACCESS_TOKEN_EXPIRE_MINUTES` por env), `dependencies.py` (`get_current_user` / `require_admin`), tabla `usuarios` (`models.Usuario`; hoy la crea Alembic, no `create_all`), `routers/auth.py` (`POST /auth/login` → cookie httpOnly JWT, `POST /auth/logout`, `GET /auth/me`, `POST /auth/register` solo admin), `scripts/create_admin.py`.
 - **Rutas protegidas:** lecturas → `get_current_user`; escrituras (subir/borrar archivo, procesadores, toggle de métricas, crear geografía) → `require_admin`. **Nada queda público.**
 - **Frontend** (`frontend/`): `proxy.ts` (Next 16 renombró `middleware.ts` → `proxy.ts`) valida el JWT con `node:crypto` y **redirige a `/login` sin sesión** (excluye `/api/*`, lo protege el backend); `app/login/page.tsx`, `components/auth-shell.tsx` (oculta sidebar en `/login`), `hooks/use-session.ts`, `login`/`getMe`/`logout` en `lib/api.ts`, `app-sidebar.tsx` con email/rol/logout y gating de admin para `viewer`. `use-processors.ts` suma `credentials:"include"`.
 - **Infra:** `.env.example`, `database.py` lee `DATABASE_URL` por env, `docker-compose.yml` inyecta `SECRET_KEY`/`AUTH_SECRET` (fallback común), `requirements.txt` agrega `PyJWT` + `bcrypt`.
 - **Nota / pendiente (a cargo del usuario):** `EmailStr` rechaza dominios `*.local`; se definió en `schemas.py` un tipo local `Email` (permite `.local`) pero aún no reemplaza `EmailStr` en `UsuarioCreate`/`Usuario`/`LoginRequest`. Usar dominio real para el admin (`admin@walicho.com`). Validación restante: flujo login → dashboard → logout completo.
 
+**Sesión del 18 de agosto de 2026 — Alembic + Docker prod + merge del refactor (auth):**
+- GeoJSON de seed (`partidos.geojson`, `circuito-electorales-pba.geojson`) se mueven de `frontend/public/` a `backend/static/` y se copian en la imagen del backend. El mapa sigue leyendo PostGIS, no esos archivos.
+- Alembic: migración inicial `431cd39c2ed4`, entrypoint `alembic upgrade head` antes de uvicorn. Volúmenes viejos de `create_all` se stampean (`alembic stamp head`).
+- `docker-compose.prod.yml` + Dockerfiles de prod + nginx TLS listos en el repo. El deploy a EC2 todavía no se hizo — runbook en `DEPLOY.md`.
+- Se mergearon a `main` el PR #7 (alembic/deploy) y el PR #8 (`refactor-motor-cruzamiento`, auth). Auth quedó cableado: `include_router(auth.router)`, modelo `Usuario`, login/proxy/sidebar.
+- Documentación unificada: `README.md` (usuario), `DEPLOY.md` (AWS), este archivo (bitácora). Se elimina `CLAUDE.md`.
+
 ---
 
 ## 📌 Resumen ejecutivo
 
-WALICHO es un dashboard de análisis político sobre la PBA con mapa interactivo. **La base técnica está consolidada** (modelo estrella, PostGIS, sistema de procesadores dinámico), pero la integración con fuentes externas y la finalización de la UI son las próximas prioridades.
+WALICHO es un dashboard de análisis político sobre la PBA con mapa interactivo. **La base técnica está consolidada** (modelo estrella, PostGIS, procesadores, auth, Alembic). Lo inmediato es el primer deploy AWS (`DEPLOY.md`); después CI/CD, UI de gestión y fuentes externas.
 
 | Área                       | Estado actual                                                |
 |----------------------------|--------------------------------------------------------------|
@@ -56,12 +73,14 @@ WALICHO es un dashboard de análisis político sobre la PBA con mapa interactivo
 | Mapa interactivo           | Funcional, con doble capa (municipios + circuitos)            |
 | Filtros cruzados           | Categoría (partidos) + rango (PBG)                            |
 | Reportes gráficos          | Parcial — `/graficos` tiene componentes dinámicos y mocks     |
+| Autenticación              | Listo — JWT + cookie httpOnly, roles admin/viewer             |
+| Schema (Alembic)           | Listo — entrypoint corre `upgrade head`                       |
+| Docker producción          | Listo en el repo (`docker-compose.prod.yml`)                  |
+| Deploy AWS                 | Pendiente — ver `DEPLOY.md`                                   |
+| CI/CD                      | Pendiente (después del deploy manual)                         |
 | Ingesta de redes (Listen)  | Diseñado, no implementado                                    |
-| API Meta Business          | Priorizado para próximas etapas                               |
-| Bug crítico abierto        | `selectedMunicipio` undefined en cadena de props del mapa     |
-| Próxima sesión             | Plan pre-demo martes (estabilidad + pulido)                   |
-| Autenticación             | Etapa 3.1 implementada (~funcionando) — JWT + cookie httpOnly         |
-| Orientación confirmada     | Auth → Deploy AWS → CI/CD → Visualización → Fuentes → IA      |
+| API Meta Business          | Priorizado más adelante                                       |
+| Orientación                | Deploy AWS → CI/CD → visualización → fuentes → IA             |
 
 ---
 
@@ -72,12 +91,18 @@ WALICHO es un dashboard de análisis político sobre la PBA con mapa interactivo
 - **Frontend:** Next.js 16 + React 18 + TypeScript + Tailwind + Radix UI + Leaflet + Recharts
 - **Backend:** FastAPI + SQLAlchemy async + asyncpg + GeoAlchemy2
 - **DB:** PostgreSQL 16 + PostGIS 3.4
-- **Infra:** Docker Compose (db, backend, redis)
+- **Infra:** Docker Compose (db, backend, frontend, redis, nginx). Prod: `docker-compose.prod.yml`.
 
 ### Servicios disponibles (rutas FastAPI)
 
+Lecturas: `get_current_user`. Escrituras: `require_admin`. Login es el único flujo público.
+
 | Método | Ruta                                                  | Descripción                                |
 |--------|-------------------------------------------------------|--------------------------------------------|
+| POST   | `/api/v1/auth/login`                                  | Cookie httpOnly JWT                        |
+| POST   | `/api/v1/auth/logout`                                 | Borra cookie                               |
+| GET    | `/api/v1/auth/me`                                     | Usuario de la sesión                       |
+| POST   | `/api/v1/auth/register`                               | Alta de usuario (solo admin)               |
 | GET    | `/api/v1/geografia/municipios/geojson`                | Municipios como FeatureCollection          |
 | GET    | `/api/v1/geografia/circuitos/geojson`                 | Circuitos como FeatureCollection           |
 | GET    | `/api/v1/geografia`                                   | Lista plana de geografías                  |
@@ -94,9 +119,10 @@ WALICHO es un dashboard de análisis político sobre la PBA con mapa interactivo
 | POST   | `/api/v1/procesadores/`                               | Crear procesador                           |
 | POST   | `/api/v1/procesadores/verificar-encabezados`          | Matchear encabezados contra procesadores   |
 
-### Modelo de datos (5 entidades)
+### Modelo de datos (6 entidades)
 
 ```
+Usuario
 Archivo ─┐
          ├──▶ Hechos_Datos ◀─── Dimension_Geografica
 Metricas ┘           ▲
@@ -104,6 +130,7 @@ Metricas ┘           ▲
                 Procesador
 ```
 
+- **`usuarios`**: email, hash bcrypt, rol (`admin`/`viewer`), activo, last_login.
 - **`archivos`**: registro de cada archivo subido (nombre visible, original, fecha de carga, estado de procesamiento, log, filas procesadas/fallidas).
 - **`dimension_geografica`**: jerarquía Partido → Circuito, con geometría PostGIS (MULTIPOLYGON, SRID 4326).
 - **`metricas`**: definición de cada métrica (nombre clave, nombre amigable, tipo: ELECTORAL/DEMOGRAFICA/GEOGRAFICA/TEMPORAL/ECONOMICA, is_active, archivo origen).
@@ -288,21 +315,13 @@ El **municipio queda como ancla de datos persistente**: al seleccionar un circui
 
 **Motivación:** pasar de un prototipo local a una plataforma con identidad propia, accesible por el cliente y por nosotros, desplegada en cloud, con despliegues continuos para mostrar mejoras instantáneas.
 
-#### 3.1 — Autenticación
+#### 3.1 — Autenticación — ✅ hecha (ago-2026)
 
-- **JWT propio** (sin dependencia externa): email + password hasheado, login/logout, middleware de FastAPI.
-- Roles simples: `admin` y `viewer` (alcanza para el caso actual: yo + mi cliente).
-- Tabla nueva `usuarios` + endpoint `POST /api/v1/auth/login`, `POST /api/v1/auth/register`.
-- Guard en rutas protegidas del backend y guard de páginas en frontend (redirect a `/login` si no hay token).
-- **No en esta etapa:** login social (Google), recuperación de password, MFA. Para más adelante.
+JWT propio, roles `admin`/`viewer`, cookie httpOnly, `proxy.ts` en el frontend. Fuera de alcance (sigue): login social, recupero de password, MFA, refresh tokens.
 
-#### 3.2 — Deploy en AWS (free tier)
+#### 3.2 — Deploy en AWS (free tier) — 🔄 siguiente
 
-- Instancia EC2 (t2.micro o t3.micro dentro del free tier) corriendo Docker.
-- RDS PostgreSQL+PostGIS free tier para no administrar la DB dentro del EC2 (más resiliente).
-- Subdominio propio (Cloudflare free o Route 53 — a evaluar) — **no es prioridad**, podemos usar la IP pública o un dominio temporal.
-- Variables de entorno gestionadas con `.env` o AWS Secrets Manager (básico al principio).
-- **Objetivo de aprendizaje:** entender el ciclo deploy en AWS antes de automatizarlo.
+Runbook vivo en [`DEPLOY.md`](./DEPLOY.md). Resumen: EC2 t3.micro + Postgres/PostGIS **en Docker en el EC2** (RDS free tier no habilita PostGIS), Cloudflare + Let's Encrypt, `.env` en el host. **No buildear Next en el t3.micro.**
 
 #### 3.3 — CI/CD con GitHub Actions
 
@@ -313,19 +332,9 @@ El **municipio queda como ancla de datos persistente**: al seleccionar un circui
 - **Motivación:** poder mostrarle mejoras al cliente de forma continua e instantánea sin deploys manuales.
 - **Decisión:** GitHub Actions (no AWS CodePipeline) porque queremos aprender una herramienta portable.
 
-##### 3.3.1 — Checklist: preparar Docker para producción (pendiente, antes del deploy)
+##### 3.3.1 — Docker de producción — ✅ hecho (ago-2026)
 
-> Nota de la sesión del 8 de agosto de 2026: el `docker-compose.yml` actual (con el `frontend` ya agregado) está pensado para **desarrollo local** (volúmenes montados + `next dev`). No está listo para cloud tal cual. Checklist de lo que hay que ajustar antes de deployar a AWS:
-
-- **Frontend — Dockerfile multi-stage:** `npm ci` → `next build` → `next start` (imagen final liviana). Hoy corre `next dev`.
-- **Backend — Dockerfile de producción:** uvicorn/gunicorn con `--workers N`; hoy corre `uvicorn main:app` sin workers y con volumen montado.
-- **Quitar volúmenes de código** (`./backend/app:/app`, `./frontend:/app`, `- /app/node_modules`) en producción: en cloud no hay directorio del host que montar.
-- **Secretos/credenciales externalizados:** hoy Postgres usa `root`/`root` hardcodeados. Pasar a variables de entorno / `.env` / AWS Secrets Manager; evaluar RDS PostgreSQL+PostGIS en vez de la DB dentro del EC2.
-- **`container_name` fijos** (`pba_db`, `pba_backend`, `pba_frontend`, `pba_cache`): revisar porque chocan al escalar o en orquestadores; evaluar `profiles` para separar dev de prod.
-- **Proxy reverso + TLS:** agregar Nginx (o similar) para HTTPS y enrutar `/` → frontend y `/api` → backend, y que así `BACKEND_URL` en producción sea relativo/seguro.
-- **Persistencia de la DB:** hoy volumen local `postgres_data`; definir estrategia de disco gestionado y backups para el deploy real.
-- **Documentar el deploy AWS:** alcance depende del destino; este checklist aplica a un **VPS / EC2 con Docker Compose**. Para servicios tipo (o K8s) la estrategia cambia.
-- **Recordatorio general:** el frontend usa rewrites de Next (`/api/*` → `BACKEND_URL`); en producción configurar `BACKEND_URL` correctamente (ver `next.config.mjs`).
+`docker-compose.prod.yml`, Dockerfiles multi-stage, nginx TLS, Alembic en el entrypoint, secretos por `.env`. Dev y prod son archivos distintos. Detalle operativo: `DEPLOY.md`.
 
 #### 3.4 — Roles + auditoría + monitoreo
 
@@ -469,7 +478,7 @@ Ordenadas por **impacto en demo / costo de implementación**. Las primeras son c
 ### Lo que NO recomiendo hacer pronto
 
 - **Microservicio de IA** (Etapa 5 del roadmap): tentador pero prematura. Sin auth, sin deploy, sin variedad de datos, el agente no tiene con qué aportar. Construir sobre arena.
-- **Auth + AWS + CI/CD** en simultáneo: cada uno es un mini-proyecto. Hacer uno, validarlo, después el siguiente.
+- **AWS + CI/CD en simultáneo:** el Docker de prod ya está. Primero el EC2 a mano (`DEPLOY.md`), después GitHub Actions.
 - **Optimizar el `generic_csv_processor`** mientras siga entrando por background task y el cliente esté conforme. La carga de 95 MB ya funciona; la mejora de velocidad es nice-to-have, no diferenciador.
 
 ---
@@ -555,7 +564,7 @@ Si el cliente es conservador o quiere ver resultados rápido: **A**, y en la ses
 
 ## 📝 Notas para retomar trabajo
 
-- **Levantar el backend con Docker** es el primer paso; los scripts de geografía (`import_geojson`, `import_circuitos`) están documentados en `readme.md`.
-- **Frontend usa rewrites de Next** (`/api/*` → `http://localhost:8000/api/*`). Si se deploya, configurar `BACKEND_URL`.
+- **Levantar el stack:** [`README.md`](./README.md). Deploy AWS: [`DEPLOY.md`](./DEPLOY.md).
+- **Frontend usa rewrites de Next** (`/api/*` → backend). En prod `NEXT_PUBLIC_API_BASE_URL=""` (mismo origen vía nginx). `use-processors.ts` todavía pega directo a `localhost:8000` — unificar antes del corte.
 - **Modelos de procesador**: crear uno nuevo es trivial desde el modal de carga, lo que es la base del enfoque "adaptar a formatos sin código".
 - **`dimension_extra`** es el comodín para metadata que no justifica una columna propia (año, tipo de voto, fuente, etc.).

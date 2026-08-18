@@ -23,7 +23,7 @@ app.add_middleware(
 )
 
 # El schema de la DB lo maneja Alembic (entrypoint: `alembic upgrade head`).
-# Ver DEPLOY.md §2.4 y backend/migrations/.
+# Ver DEPLOY.md y backend/migrations/.
 
 # Incluir routers
 app.include_router(auth.router, prefix="/api/v1")

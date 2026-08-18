@@ -47,6 +47,8 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      # 2 workers caben en t3.micro junto a PostGIS + Next. Subir a 4 solo con más RAM.
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
     depends_on:
       db:
         condition: service_healthy
@@ -84,7 +86,7 @@ services:
     volumes:
       - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      # Certificados TLS (gestionados por certbot en el host, ver DEPLOY.md §2.6).
+# Certificados TLS (gestionados por certbot en el host, ver DEPLOY.md).
       - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - frontend
