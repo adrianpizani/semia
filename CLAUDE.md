@@ -27,7 +27,7 @@ docker compose logs -f backend       # tail backend logs
 #   Backend:  http://localhost:8000  (docs at /docs)
 ```
 
-On first run, seed the geography:
+On first run, seed the geography (schema lo aplica el entrypoint con Alembic):
 
 ```bash
 docker exec -it pba_backend bash -c "PYTHONPATH=/ python -m app.scripts.import_geojson"
@@ -116,7 +116,7 @@ docker compose restart backend
   - `generic_csv_processor.py` — **The actual CSV loader.** Renames columns via `Procesador.mapeo_columnas`, batches inserts (`BATCH_SIZE = 5000`), and is used for every upload through `upload_service`. Files: `electoral_csv_processor.py`, `socioeconomic_csv_processor.py`, `pbg_csv_processor.py` are kept but are effectively dead code (see "In-flight work" below).
   - `normalizaciones.py` — central registry of canonical-value homologations (e.g. `BLANCO`/`BLANCOS` → `EN BLANCO`); extend when a new variant appears.
 - `scripts/`
-  - `import_geojson.py` — reads `frontend/public/partidos.geojson` (mounted into the container at `/app/static/partidos.geojson`) and inserts `Dimension_Geografica` rows with PostGIS geometry. Reads `nam`/`fna` and `gna` properties.
+  - `import_geojson.py` — reads `backend/static/partidos.geojson` (in the image at `/app/static/partidos.geojson`; in dev the compose volume remounts `./backend/static`) and inserts `Dimension_Geografica` rows with PostGIS geometry. Reads `nam`/`fna` and `gna` properties.
   - `import_circuitos.py` — same for circuits; uses `SYNONYM_MAP` to align names like "Nueve de Julio" vs "9 de Julio" and links each circuit to its parent `Partido` via `parent_id`.
 
 ### Frontend layout (`frontend/`)

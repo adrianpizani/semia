@@ -22,11 +22,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup():
-    async with engine.begin() as conn:
-        # await conn.run_sync(Base.metadata.drop_all) # OJO: Borra todo en cada reinicio
-        await conn.run_sync(Base.metadata.create_all) # Asegura que las tablas existan
+# El schema de la DB lo maneja Alembic (entrypoint: `alembic upgrade head`).
+# Ver DEPLOY.md §2.4 y backend/migrations/.
 
 # Incluir routers
 app.include_router(auth.router, prefix="/api/v1")

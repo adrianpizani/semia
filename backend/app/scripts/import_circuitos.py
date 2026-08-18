@@ -1,12 +1,12 @@
 import json
 import asyncio
 import unicodedata
+from geoalchemy2.shape import from_shape
 from shapely.geometry import shape
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 # Usar importaciones relativas para que funcione dentro de la app
-from ..database import engine, AsyncSessionLocal, Base
+from ..database import AsyncSessionLocal
 from ..models import Dimension_Geografica
 
 # Diccionario de correcciones para nombres no coincidentes
@@ -28,6 +28,7 @@ def normalize_text(text: str) -> str:
     return only_ascii.lower()
 
 async def import_circuitos_data():
+    # Seed data: backend/static/circuito-electorales-pba.geojson (COPY'd / bind-mounted at /app/static).
     geojson_path = "/app/static/circuito-electorales-pba.geojson"
     
     print(f"Iniciando importación de Circuitos GeoJSON desde: {geojson_path}")
@@ -41,9 +42,6 @@ async def import_circuitos_data():
     except json.JSONDecodeError:
         print(f"Error: No se pudo decodificar el archivo GeoJSON en {geojson_path}")
         return
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
 
     async with AsyncSessionLocal() as session:
         partidos_result = await session.execute(
@@ -85,7 +83,7 @@ async def import_circuitos_data():
             db_geografia = Dimension_Geografica(
                 nombre=nombre_completo,
                 nivel="Circuito",
-                geometria=shapely_geometry.wkt,
+                geometria=from_shape(shapely_geometry, srid=4326),
                 parent_id=parent_id
             )
             session.add(db_geografia)

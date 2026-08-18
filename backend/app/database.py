@@ -10,8 +10,9 @@ DATABASE_URL = os.getenv(
     "postgresql+asyncpg://root:root@db/pba_dashboard"
 )
 
-# 2. El "motor" asincrónico
-engine = create_async_engine(DATABASE_URL, echo=True)
+# 2. El "motor" asincrónico. echo=True inunda los logs en prod (queries del mapa).
+_ECHO = os.getenv("SQL_ECHO", "false").lower() == "true"
+engine = create_async_engine(DATABASE_URL, echo=_ECHO)
 
 # 3. El creador de sesiones
 AsyncSessionLocal = sessionmaker(

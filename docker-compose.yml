@@ -34,7 +34,10 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
     volumes:
       - ./backend/app:/app
-      - ./frontend/public:/app/static 
+      # El bind de ./backend/app oculta lo que el Dockerfile copia fuera de app/.
+      - ./backend/static:/app/static
+      - ./backend/alembic.ini:/app/alembic.ini:ro
+      - ./backend/migrations:/app/migrations 
     depends_on:
       db: 
         condition: service_healthy
