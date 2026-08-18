@@ -7,6 +7,8 @@ export interface Procesador {
     id: number
     nombre: string
     tipo_archivo: string
+    nivel_geografico: string
+    metric_name: string
     mapeo_columnas: { [key: string]: string }
 }
 
@@ -30,7 +32,9 @@ export const useProcessors = () => {
         setLoading(true)
         setError(null)
         try {
-            const response = await fetch(`${API_BASE_URL}/procesadores/`)
+            const response = await fetch(`${API_BASE_URL}/procesadores/`, {
+                credentials: "include",
+            })
             if (!response.ok) {
                 throw new Error(`Error ${response.status}: ${response.statusText}`)
             }
@@ -56,6 +60,7 @@ export const useProcessors = () => {
                 headers: {
                     "Content-Type": "application/json",
                 },
+                credentials: "include",
                 body: JSON.stringify(processorData),
             })
             if (!response.ok) {
@@ -85,6 +90,7 @@ export const useProcessors = () => {
                 headers: {
                     "Content-Type": "application/json",
                 },
+                credentials: "include",
                 body: JSON.stringify(requestData),
             })
             if (!response.ok) {

@@ -26,6 +26,7 @@ app.add_middleware(
 # Ver DEPLOY.md §2.4 y backend/migrations/.
 
 # Incluir routers
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(geografia.router, prefix="/api/v1")
 app.include_router(archivos.router, prefix="/api/v1")
 app.include_router(metricas.router, prefix="/api/v1")

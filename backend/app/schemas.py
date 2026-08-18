@@ -1,7 +1,23 @@
-from pydantic import BaseModel, Field, ConfigDict
-from datetime import date
-from typing import List, Literal, Union, Tuple
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, AfterValidator
+from datetime import date, datetime
+from typing import Annotated, List, Literal, Union, Tuple
+import email_validator
 from models import EstadoProcesamiento, TipoMetrica # Importar los Enums
+
+
+def _validar_email(value: str) -> str:
+    """Valida el email permitiendo dominios de uso especial/reservados (p. ej. `.local`
+    de desarrollo), que `EmailStr` rechazaría por defecto."""
+    email_validator.validate_email(
+        value,
+        check_deliverability=False,
+        allow_special_use_domains=True,
+    )
+    return value.lower()
+
+
+# Tipo email del proyecto: igual de estricto que EmailStr, pero admite `.local`.
+Email = Annotated[str, AfterValidator(_validar_email)]
 
 # --- Geografía ---
 
@@ -110,6 +126,20 @@ class GeoDataElectoral(BaseModel):
     resultados: list[ResultadoPartido]
     ganador: ResultadoPartido | None
 
+# --- Serie histórica por municipio (sparkline) ---
+
+class SerieHistoricaPunto(BaseModel):
+    """Un punto de la serie: votos agregados por partido en un año, para un municipio."""
+    anio: str
+    partido: str
+    votos: float
+
+class SerieHistorica(BaseModel):
+    """Serie histórica de votos por (año, partido) para un municipio.
+    Pensada para renderizar una sparkline compacta (~80x24px)."""
+    geografia_id: int
+    puntos: list[SerieHistoricaPunto]
+
 class GenericData(BaseModel):
         geografia_id: int
         geografia_nombre: str
@@ -140,4 +170,33 @@ class Procesador(ProcesadorBase):
     id: int
 
     model_config = ConfigDict(from_attributes=True)
+
+# --- Autenticación ---
+
+class UsuarioCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6)
+    nombre: str | None = None
+    rol: Literal["admin", "viewer"] = "viewer"
+
+
+class Usuario(BaseModel):
+    id: int
+    email: EmailStr
+    nombre: str | None
+    rol: str
+    activo: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: Usuario
     

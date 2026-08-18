@@ -136,7 +136,7 @@ export const deleteArchivo = async (archivoId: number) => {
   }
 };
 
-import { AnyFiltro, MetricaOpciones } from './types';
+import { AnyFiltro, MetricaOpciones, Usuario } from './types';
 
 // ... (other functions remain the same) ...
 
@@ -193,6 +193,66 @@ export const getMetricOpciones = async (metricId: number): Promise<MetricaOpcion
   } catch (error) {
     console.error('Error fetching metric opciones:', error);
     return { partidos: [], años: [], votos_tipos: [] };
+  }
+};
+
+export interface SeriePunto {
+  anio: string
+  partido: string
+  votos: number
+}
+
+export const getSerieHistorica = async (metricId: number, geografiaId: number): Promise<SeriePunto[]> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/metricas/${metricId}/serie-historica/${geografiaId}`, { cache: 'no-store' });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Network response was not ok for Serie Historica');
+    }
+    const data = await response.json();
+    return data.puntos ?? [];
+  } catch (error) {
+    console.error('Error fetching serie historica:', error);
+    return [];
+  }
+};
+
+// --- Autenticación ---
+export const login = async (email: string, password: string) => {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include', // Envía/recibe la cookie httpOnly de sesión
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Credenciales inválidas');
+  }
+  return await response.json();
+};
+
+export const getMe = async (): Promise<Usuario | null> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/me`, { cache: 'no-store' });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching current user:', error);
+    return null;
+  }
+};
+
+export const logout = async () => {
+  try {
+    await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST' });
+  } catch (error) {
+    console.error('Error al cerrar sesión:', error);
+  }
+  if (typeof window !== 'undefined') {
+    window.location.href = '/login';
   }
 };
 

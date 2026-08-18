@@ -4,6 +4,7 @@ from sqlalchemy import select
 from typing import List
 
 from database import get_db
+from dependencies import get_current_user, require_admin
 import models
 import schemas
 
@@ -15,7 +16,9 @@ router = APIRouter(
 
 @router.post("/", response_model=schemas.Procesador)
 async def create_procesador(
-    procesador: schemas.ProcesadorCreate, db: AsyncSession = Depends(get_db)
+    procesador: schemas.ProcesadorCreate,
+    db: AsyncSession = Depends(get_db),
+    _admin = Depends(require_admin),
 ):
     """
     Crea una nueva configuración de procesador.
@@ -27,7 +30,10 @@ async def create_procesador(
     return db_procesador
 
 @router.get("/", response_model=List[schemas.Procesador])
-async def read_procesadores(db: AsyncSession = Depends(get_db)):
+async def read_procesadores(
+    db: AsyncSession = Depends(get_db),
+    _user = Depends(get_current_user),
+):
     """
     Devuelve una lista de todas las configuraciones de procesadores.
     """
@@ -36,7 +42,9 @@ async def read_procesadores(db: AsyncSession = Depends(get_db)):
 
 @router.post("/verificar-encabezados", response_model=schemas.Procesador | None)
 async def verificar_procesador_por_encabezados(
-    request: schemas.ProcesadorMatchRequest, db: AsyncSession = Depends(get_db)
+    request: schemas.ProcesadorMatchRequest,
+    db: AsyncSession = Depends(get_db),
+    _user = Depends(get_current_user),
 ):
     """
     Verifica si existe un procesador que coincida con los encabezados proporcionados.

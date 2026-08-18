@@ -1,10 +1,14 @@
 # /backend/database.py
+import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# DATABASE_URL = "postgresql+asyncpg://tu_usuario:tu_password@localhost/pba_dashboard"
-# Docker usará su DNS interno para encontrar el contenedor 'db'
-DATABASE_URL = "postgresql+asyncpg://root:root@db/pba_dashboard"
+# URL de conexión a PostgreSQL/PostGIS, sobreescribible por variable de entorno.
+# Docker usará su DNS interno para encontrar el contenedor 'db'.
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://root:root@db/pba_dashboard"
+)
 
 # 2. El "motor" asincrónico. echo=True inunda los logs en prod (queries del mapa).
 _ECHO = os.getenv("SQL_ECHO", "false").lower() == "true"
