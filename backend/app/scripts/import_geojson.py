@@ -1,13 +1,14 @@
 import json
+from geoalchemy2.shape import from_shape
 from shapely.geometry import shape
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 # Usar importaciones relativas
-from ..database import engine, AsyncSessionLocal, Base
+from ..database import AsyncSessionLocal
 from ..models import Dimension_Geografica
 
 async def import_geojson_data():
+    # Seed data: backend/static/partidos.geojson (COPY'd / bind-mounted at /app/static).
     geojson_path = "/app/static/partidos.geojson"
     
     print(f"Iniciando importación de GeoJSON desde: {geojson_path}")
@@ -21,10 +22,6 @@ async def import_geojson_data():
     except json.JSONDecodeError:
         print(f"Error: No se pudo decodificar el archivo GeoJSON en {geojson_path}")
         return
-
-    async with engine.begin() as conn:
-        # Asegúrate de que las tablas existan
-        await conn.run_sync(Base.metadata.create_all)
 
     async with AsyncSessionLocal() as session:
         for feature in geojson_data['features']:
@@ -52,7 +49,7 @@ async def import_geojson_data():
             db_geografia = Dimension_Geografica(
                 nombre=nombre,
                 nivel=nivel,
-                geometria=shapely_geometry.wkt # Guardar como Well-Known Text
+                geometria=from_shape(shapely_geometry, srid=4326),
             )
             session.add(db_geografia)
             print(f"Añadido: {nombre} ({nivel})")

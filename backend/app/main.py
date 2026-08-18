@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routers import geografia, archivos, metricas, procesadores
+from routers import geografia, archivos, metricas, procesadores, auth
 
 app = FastAPI(title="Dashboard PBA Backend")
 
@@ -22,11 +22,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup():
-    async with engine.begin() as conn:
-        # await conn.run_sync(Base.metadata.drop_all) # OJO: Borra todo en cada reinicio
-        await conn.run_sync(Base.metadata.create_all) # Asegura que las tablas existan
+# El schema de la DB lo maneja Alembic (entrypoint: `alembic upgrade head`).
+# Ver DEPLOY.md §2.4 y backend/migrations/.
 
 # Incluir routers
 app.include_router(geografia.router, prefix="/api/v1")
