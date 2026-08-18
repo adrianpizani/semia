@@ -97,6 +97,7 @@ walicho/
 ├── backend/
 │   ├── Dockerfile
 │   ├── requirements.txt
+│   ├── static/             # GeoJSON de seed (partidos + circuitos)
 │   └── app/
 │       ├── main.py             # Entry point FastAPI
 │       ├── models.py           # 5 modelos SQLAlchemy
@@ -134,6 +135,9 @@ walicho/
 ```bash
 docker compose up -d                  # Levanta db + backend + redis
 docker compose logs -f backend        # Ver logs
+
+# Schema: el entrypoint del backend corre `alembic upgrade head` al arrancar.
+# Si el volumen ya tenía tablas de create_all: docker compose exec backend alembic stamp head
 
 # Cargar geografía base (partidos de la PBA)
 docker exec -it pba_backend bash -c "PYTHONPATH=/ python -m app.scripts.import_geojson"
