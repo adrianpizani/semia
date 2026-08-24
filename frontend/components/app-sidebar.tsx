@@ -1,6 +1,6 @@
 "use client"
 
-import { Home, FileText, BarChart3, Settings, Upload, TrendingUp, LogOut, ShieldCheck } from "lucide-react"
+import { Home, Settings, Upload, TrendingUp, LogOut, ShieldCheck, Table2 } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -18,9 +18,8 @@ import { useSession } from "@/hooks/use-session"
 import { logout } from "@/lib/api"
 
 const menuItems = [
-  { title: "Dashboard", url: "/", icon: Home },
-  { title: "Filtros Avanzados", url: "/filtros", icon: FileText },
-  { title: "Análisis y Gráficos", url: "/graficos", icon: BarChart3 },
+  { title: "Mapa", url: "/", icon: Home },
+  { title: "Análisis", url: "/analisis", icon: Table2 },
 ]
 
 // Acciones de administración: solo visibles para usuarios con rol "admin".

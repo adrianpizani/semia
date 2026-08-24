@@ -30,7 +30,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-720}
       DATABASE_URL: postgresql+asyncpg://root:root@db/pba_dashboard
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@walicho.com}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@semia.studio}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
     volumes:
       - ./backend/app:/app
@@ -51,11 +51,14 @@ services:
 
   # --- Servicio 5: El Frontend (Next.js) ---
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
     container_name: pba_frontend
     ports:
       - "3000:3000"
     environment:
+      NODE_ENV: development
       # Dentro de la red de Docker "localhost" no llega al backend,
       # por eso apuntamos al nombre del servicio.
       BACKEND_URL: http://backend:8000

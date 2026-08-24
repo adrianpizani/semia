@@ -1,4 +1,4 @@
-# AVANCE — Estado del proyecto WALICHO
+# AVANCE — Estado del proyecto Semia
 
 Bitácora viva: estado, bugs, decisiones y roadmap. No es la guía de uso ni el runbook de deploy.
 
@@ -6,6 +6,7 @@ Bitácora viva: estado, bugs, decisiones y roadmap. No es la guía de uso ni el 
 |---------|-----|
 | [`README.md`](./README.md) | Cómo correr el proyecto (usuario) |
 | [`DEPLOY.md`](./DEPLOY.md) | Plan y runbook del deploy AWS |
+| [`ANALISIS.md`](./ANALISIS.md) | Plan de la vista tabular `/analisis` (no implementado) |
 | este archivo | Qué se hizo, qué falta, por qué |
 
 `CLAUDE.md` se retiró (18-ago-2026): duplicaba README + esta bitácora.
@@ -42,7 +43,7 @@ Reemplaza y consolida los siguientes archivos previos:
 - **Card "Reportar Municipio" eliminada:** no se usa y llevaba a `/graficos` con mocks. Se quitaron `handleReportClick`, `useRouter`, `Button`, y `FileText` del import; no quedan referencias huérfanas.
 - **Card "Indicadores seleccionados" siempre visible cuando hay municipio:** antes se ocultaba si el filtro de rango vaciaba las secundarias (el usuario perdía el feedback de qué municipio tenía seleccionado). Ahora aparece siempre que hay `selectedMunicipio`, con texto guía amigable si no hay secundarias cargadas.
 - **Layout de la columna derecha:** Resultados + Indicadores seleccionados pasan a un `grid grid-cols-2 gap-4` lado a lado (antes apilados). Las cards se compactan con tipografía de etiqueta (`text-sm uppercase tracking-wide`) y padding reducido (`pb-2 pt-4`) para que la densidad visual sea pareja.
-- **Transición de color en el mapa:** cuando cambian los filtros, los municipios ya no "saltan" de color. `path.walicho-municipio` transiciona `fill` y `fill-opacity` en 250ms; la variante `--instant` (hover/selección) corta la transición para feedback inmediato. Costo: 4 líneas en `globals.css` + `className` en `getStyleMunicipio`.
+- **Transición de color en el mapa:** cuando cambian los filtros, los municipios ya no "saltan" de color. `path.semia-municipio` transiciona `fill` y `fill-opacity` en 250ms; la variante `--instant` (hover/selección) corta la transición para feedback inmediato. Costo: 4 líneas en `globals.css` + `className` en `getStyleMunicipio`.
 - **Sparkline evaluada y retirada:** se implementó `GET /metricas/{id}/serie-historica/{geo_id}` en backend y un componente `Sparkline` en frontend que mostraba la tendencia 2017-2023 del partido más votado por municipio. Se decidió retirarla por **lectura ambigua**: la subida podía ser crecimiento del padrón electoral, no performance política, y el cliente la encontró ruidosa. El endpoint queda en backend por si lo queremos reutilizar para otra vista (tooltip del mapa, `/graficos`, export).
 - **`generate_socioeconomico_realista.py`:** script que genera un CSV socioeconómico con 4 arquetipos (AMBA_POPULAR, INTERIOR_RICO, CIUDAD_GRANDE, INTERIOR_POBRE) y correlaciones internas para que los filtros socioeconómicos produzcan cambios visibles al cruzarse con el mapa electoral. Reemplaza al mock plano anterior.
 
@@ -51,7 +52,7 @@ Reemplaza y consolida los siguientes archivos previos:
 - **Rutas protegidas:** lecturas → `get_current_user`; escrituras (subir/borrar archivo, procesadores, toggle de métricas, crear geografía) → `require_admin`. **Nada queda público.**
 - **Frontend** (`frontend/`): `proxy.ts` (Next 16 renombró `middleware.ts` → `proxy.ts`) valida el JWT con `node:crypto` y **redirige a `/login` sin sesión** (excluye `/api/*`, lo protege el backend); `app/login/page.tsx`, `components/auth-shell.tsx` (oculta sidebar en `/login`), `hooks/use-session.ts`, `login`/`getMe`/`logout` en `lib/api.ts`, `app-sidebar.tsx` con email/rol/logout y gating de admin para `viewer`. `use-processors.ts` suma `credentials:"include"`.
 - **Infra:** `.env.example`, `database.py` lee `DATABASE_URL` por env, `docker-compose.yml` inyecta `SECRET_KEY`/`AUTH_SECRET` (fallback común), `requirements.txt` agrega `PyJWT` + `bcrypt`.
-- **Nota / pendiente (a cargo del usuario):** `EmailStr` rechaza dominios `*.local`; se definió en `schemas.py` un tipo local `Email` (permite `.local`) pero aún no reemplaza `EmailStr` en `UsuarioCreate`/`Usuario`/`LoginRequest`. Usar dominio real para el admin (`admin@walicho.com`). Validación restante: flujo login → dashboard → logout completo.
+- **Nota / pendiente (a cargo del usuario):** `EmailStr` rechaza dominios `*.local`; se definió en `schemas.py` un tipo local `Email` (permite `.local`) pero aún no reemplaza `EmailStr` en `UsuarioCreate`/`Usuario`/`LoginRequest`. Usar dominio real para el admin (`admin@semia.studio`). Validación restante: flujo login → dashboard → logout completo.
 
 **Sesión del 18 de agosto de 2026 — Alembic + Docker prod + merge del refactor (auth):**
 - GeoJSON de seed (`partidos.geojson`, `circuito-electorales-pba.geojson`) se mueven de `frontend/public/` a `backend/static/` y se copian en la imagen del backend. El mapa sigue leyendo PostGIS, no esos archivos.
@@ -64,7 +65,7 @@ Reemplaza y consolida los siguientes archivos previos:
 
 ## 📌 Resumen ejecutivo
 
-WALICHO es un dashboard de análisis político sobre la PBA con mapa interactivo. **La base técnica está consolidada** (modelo estrella, PostGIS, procesadores, auth, Alembic). Lo inmediato es el primer deploy AWS (`DEPLOY.md`); después CI/CD, UI de gestión y fuentes externas.
+Semia es un dashboard de análisis político sobre la PBA con mapa interactivo. **La base técnica está consolidada** (modelo estrella, PostGIS, procesadores, auth, Alembic). Lo inmediato es el primer deploy AWS (`DEPLOY.md`); después CI/CD, UI de gestión y fuentes externas.
 
 | Área                       | Estado actual                                                |
 |----------------------------|--------------------------------------------------------------|
@@ -342,7 +343,7 @@ Runbook vivo en [`DEPLOY.md`](./DEPLOY.md). Resumen: EC2 t3.micro + Postgres/Pos
 - Tabla `usuarios` extiende con `last_login`, `created_by` (admin que dio de alta).
 - Dashboard básico de estado: scrapers activos, errores recientes, últimas cargas (puede ser tan simple como una página `/admin/health`).
 
-**No incluido todavía:** salida a clientes externos — la plataforma sigue siendo interna de WALICHO.
+**No incluido todavía:** salida a clientes externos — la plataforma sigue siendo interna de Semia.
 
 ### 📊 Etapa 4 — Visualización analítica (1-3 meses)
 

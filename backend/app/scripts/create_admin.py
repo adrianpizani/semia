@@ -17,7 +17,7 @@ from ..security import hash_password
 
 
 async def main() -> None:
-    email = os.getenv("ADMIN_EMAIL", "admin@walicho.com").lower()
+    email = os.getenv("ADMIN_EMAIL", "admin@semia.studio").lower()
     password = os.getenv("ADMIN_PASSWORD", "admin123")
 
     async with AsyncSessionLocal() as db:

@@ -218,7 +218,16 @@ async def get_serie_historica_for_geo(
 async def get_all_generic_data_for_metric(db: AsyncSession, metric_id: int, filtros: Optional[List[schemas.AnyFiltro]] = None) -> list[schemas.GenericData]:
     """
     Recupera todos los valores para una métrica genérica, con filtros opcionales.
+
+    Misma semántica de cruce que el electoral:
+      - filtros de ESTA métrica (p. ej. rango propio) se aplican sobre `valor`
+      - filtros de OTRAS métricas restringen por intersección de geografías
+        (no se aplican sobre el valor de esta métrica)
     """
+    filtros = filtros or []
+    self_filters = [f for f in filtros if f.metrica_id == metric_id]
+    cross_filters = [f for f in filtros if f.metrica_id != metric_id]
+
     stmt = (
         select(
             Hechos_Datos.geografia_id,
@@ -232,7 +241,16 @@ async def get_all_generic_data_for_metric(db: AsyncSession, metric_id: int, filt
         .where(Hechos_Datos.metrica_id == metric_id)
     )
 
-    stmt = _apply_filtros(stmt, filtros)
+    stmt = _apply_filtros(stmt, self_filters)
+
+    if cross_filters:
+        geo_sets = [await _geos_for_filter(db, cf) for cf in cross_filters]
+        intersection = geo_sets[0]
+        for geo_set in geo_sets[1:]:
+            intersection &= geo_set
+        if not intersection:
+            return []
+        stmt = stmt.where(Hechos_Datos.geografia_id.in_(intersection))
 
     result = await db.execute(stmt)
     rows = result.all()

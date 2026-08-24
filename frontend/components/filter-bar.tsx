@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
 import Link from "next/link"
-import { useState, useEffect, useMemo, useCallback, useRef, SetStateAction } from "react"
+import { ReactNode, useState, useEffect, useMemo, useCallback, useRef, SetStateAction } from "react"
 import { Metrica, TipoMetricaEnum, AnyFiltro, FiltroCategorico, FiltroRango } from "@/lib/types"
 import { formatCompact, fromNormPosition, toNormPosition, RangeScale } from "@/lib/range-utils"
 
@@ -20,53 +20,61 @@ const DIMENSION_LABELS: { [k: string]: string } = {
   votos_tipo: "Tipo de voto",
 };
 
+function dimensionValue(filters: AnyFiltro[], metricId: number, dimension: string): string | undefined {
+  const match = filters.find((f): f is FiltroCategorico =>
+    f.tipo === "categoria" && f.metrica_id === metricId && f.dimension === dimension
+  );
+  return match?.valores[0];
+}
+
 // --- Sub-componente para Filtro Electoral (partido + año + tipo de voto) ---
 const ElectoralFilter = ({
   metric,
+  filters,
   onDimensionFilterChange,
   availableParties,
   availableYears,
   availableVoteTypes,
 }: {
   metric: Metrica;
+  filters: AnyFiltro[];
   onDimensionFilterChange: (metricId: number, dimension: string, valores: string[]) => void;
   availableParties: string[];
   availableYears: string[];
   availableVoteTypes: string[];
 }) => {
-  const [selectedParty, setSelectedParty] = useState<string>("all");
-  const [selectedYear, setSelectedYear] = useState<string>("all");
-  // Por defecto se muestran los votos válidos (POSITIVO) para que el ganador del mapa
-  // no incluya nulos/en blanco. El usuario puede cambiar a "Todos los tipos".
-  const [selectedType, setSelectedType] = useState<string>("POSITIVO");
+  const selectedParty = dimensionValue(filters, metric.id, "agrupacion_nombre") ?? "all";
+  const selectedYear = dimensionValue(filters, metric.id, "año") ?? "all";
+  const selectedType = dimensionValue(filters, metric.id, "votos_tipo") ?? "all";
 
-  const partidos = availableParties && availableParties.length > 0 ? availableParties : [];
-  const años = availableYears && availableYears.length > 0 ? availableYears : [];
-  // Garantizamos que "POSITIVO" (el default) siempre esté entre las opciones.
+  const partidos = Array.from(new Set([
+    ...(availableParties ?? []),
+    ...(selectedParty !== "all" ? [selectedParty] : []),
+  ])).sort();
+  const años = Array.from(new Set([
+    ...(availableYears ?? []),
+    ...(selectedYear !== "all" ? [selectedYear] : []),
+  ])).sort();
   const tipos = Array.from(new Set([...(availableVoteTypes ? availableVoteTypes : []), "POSITIVO"]));
-
-  useEffect(() => {
-    onDimensionFilterChange(metric.id, "agrupacion_nombre", selectedParty === "all" ? [] : [selectedParty]);
-  }, [selectedParty, metric.id, onDimensionFilterChange]);
-  useEffect(() => {
-    onDimensionFilterChange(metric.id, "año", selectedYear === "all" ? [] : [selectedYear]);
-  }, [selectedYear, metric.id, onDimensionFilterChange]);
-  useEffect(() => {
-    onDimensionFilterChange(metric.id, "votos_tipo", selectedType === "all" ? [] : [selectedType]);
-  }, [selectedType, metric.id, onDimensionFilterChange]);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Select value={selectedParty} onValueChange={setSelectedParty}>
-        <SelectTrigger className="w-[200px]">
-          <SelectValue placeholder="Filtrar por partido..." />
+      <Select
+        value={selectedParty}
+        onValueChange={(value) => onDimensionFilterChange(metric.id, "agrupacion_nombre", value === "all" ? [] : [value])}
+      >
+        <SelectTrigger className="w-[220px]">
+          <SelectValue placeholder="Intensidad por partido..." />
         </SelectTrigger>
         <SelectContent className="z-[9999]">
-          <SelectItem value="all">Todos los partidos</SelectItem>
+          <SelectItem value="all">Ganador por distrito</SelectItem>
           {partidos.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
         </SelectContent>
       </Select>
-      <Select value={selectedYear} onValueChange={setSelectedYear}>
+      <Select
+        value={selectedYear}
+        onValueChange={(value) => onDimensionFilterChange(metric.id, "año", value === "all" ? [] : [value])}
+      >
         <SelectTrigger className="w-[130px]">
           <SelectValue placeholder="Año..." />
         </SelectTrigger>
@@ -75,7 +83,10 @@ const ElectoralFilter = ({
           {años.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
         </SelectContent>
       </Select>
-      <Select value={selectedType} onValueChange={setSelectedType}>
+      <Select
+        value={selectedType}
+        onValueChange={(value) => onDimensionFilterChange(metric.id, "votos_tipo", value === "all" ? [] : [value])}
+      >
         <SelectTrigger className="w-[170px]">
           <SelectValue placeholder="Tipo de voto..." />
         </SelectTrigger>
@@ -92,9 +103,10 @@ const ElectoralFilter = ({
 // Data-driven: usa la escala detectada desde la muestra (log si hay mucha dispersión).
 // Desacoplado: el rango base (min/max/escala) es fijo (data sin filtrar) y la selección
 // del usuario (ventana en valores absolutos) se mantiene al aplicar el filtro, sin reset.
-const RangeFilter = ({ metric, range, onFilterChange, resetSignal }: {
+const RangeFilter = ({ metric, range, initialWin, onFilterChange, resetSignal }: {
   metric: Metrica;
   range?: { min: number; max: number; scale: RangeScale };
+  initialWin?: [number, number];
   onFilterChange: (metricId: number, filter: FiltroRango | null) => void;
   // Cambia este número para forzar al slider a volver a [min, max]. Lo usa
   // "Limpiar filtros" para resetear la ventana visual cuando el padre borra
@@ -115,11 +127,14 @@ const RangeFilter = ({ metric, range, onFilterChange, resetSignal }: {
   // (el componente se remonta con key={metric.id}, así el ref arranca en false).
   useEffect(() => {
     if (!initializedRef.current && range && min < max) {
-      setWin([min, max]);
+      const start: [number, number] = initialWin
+        ? [Math.max(min, Math.min(initialWin[0], max)), Math.max(min, Math.min(initialWin[1], max))]
+        : [min, max];
+      setWin(start);
       setScaleMode(dataScale);
       initializedRef.current = true;
     }
-  }, [min, max, dataScale, range]);
+  }, [min, max, dataScale, range, initialWin]);
 
   // Reset externo (botón "Limpiar filtros"): vuelve la ventana al rango completo.
   // NO toca scaleMode para no pisar la elección de escala del usuario.
@@ -207,6 +222,7 @@ interface FilterBarProps {
   availableYears?: string[];
   availableVoteTypes?: string[];
   metricRanges?: {[metricId: number]: {min: number, max: number, scale: 'log' | 'linear'}};
+  actions?: ReactNode;
 }
 
 export function FilterBar({
@@ -220,7 +236,8 @@ export function FilterBar({
   availableParties = [],
   availableYears = [],
   availableVoteTypes = [],
-  metricRanges = {}
+  metricRanges = {},
+  actions,
 }: FilterBarProps) {
   const [showSecondaryMetricsPopover, setShowSecondaryMetricsPopover] = useState(false)
   // Contador que se incrementa cada vez que el usuario hace "Limpiar filtros".
@@ -242,6 +259,15 @@ export function FilterBar({
       if (onSecondaryMetricsChange) {
         onSecondaryMetricsChange(selectedSecondaryMetrics.filter(id => id !== newPrimaryMetricId));
       }
+    }
+    const metric = activeMetrics.find(m => m.id === newPrimaryMetricId);
+    if (metric?.tipo === TipoMetricaEnum.ELECTORAL && onFiltersChange) {
+      onFiltersChange(prevFilters => {
+        const others = prevFilters.filter(f =>
+          !(f.metrica_id === metric.id && f.tipo === "categoria" && f.dimension === "votos_tipo")
+        );
+        return [...others, { metrica_id: metric.id, tipo: "categoria", dimension: "votos_tipo", valores: ["POSITIVO"] }];
+      });
     }
   }
 
@@ -295,10 +321,11 @@ export function FilterBar({
   // cuando el usuario los marca como DEMOGRAFICA al subir el CSV.
   const renderMetricFilter = (metric: Metrica) => {
     if (metric.tipo === TipoMetricaEnum.ELECTORAL) {
-      return <ElectoralFilter key={metric.id} metric={metric} onDimensionFilterChange={updateDimensionFilter} availableParties={availableParties} availableYears={availableYears} availableVoteTypes={availableVoteTypes} />;
+      return <ElectoralFilter key={metric.id} metric={metric} filters={filters} onDimensionFilterChange={updateDimensionFilter} availableParties={availableParties} availableYears={availableYears} availableVoteTypes={availableVoteTypes} />;
     }
     if (metric.tipo === TipoMetricaEnum.ECONOMICA || metric.tipo === TipoMetricaEnum.DEMOGRAFICA) {
-      return <RangeFilter key={metric.id} metric={metric} range={metricRanges[metric.id]} onFilterChange={updateOrRemoveFilter} resetSignal={rangeResetSignal} />;
+      const savedRange = filters.find((f): f is FiltroRango => f.tipo === "rango" && f.metrica_id === metric.id);
+      return <RangeFilter key={metric.id} metric={metric} range={metricRanges[metric.id]} initialWin={savedRange?.rango} onFilterChange={updateOrRemoveFilter} resetSignal={rangeResetSignal} />;
     }
         return null;
   };
@@ -341,6 +368,7 @@ export function FilterBar({
               {primaryFilter}
             </>
           )}
+          {actions && <div className="ml-auto shrink-0">{actions}</div>}
         </div>
 
         {/* Fila 2: selector de métricas secundarias + sus filtros a la derecha */}

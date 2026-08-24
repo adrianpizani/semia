@@ -1,8 +1,9 @@
-import { MapContainer, GeoJSON, TileLayer, LayersControl } from 'react-leaflet';
+import { MapContainer, GeoJSON, TileLayer, LayersControl, LayerGroup, useMapEvents, useMap } from 'react-leaflet';
 import { useMapView } from '@/hooks/use-map-view';
-import { useMemo } from 'react';
-import type { LatLngExpression } from 'leaflet';
-import { DistritoFeature } from '@/lib/types'; // Importar tipo común
+import { useMemo, useCallback, useEffect, useRef } from 'react';
+import type { FeatureCollection } from 'geojson';
+import L, { type LatLngExpression } from 'leaflet';
+import { DistritoFeature, MunicipioTooltipSecondaries } from '@/lib/types'; // Importar tipo común
 import { PartyLegend } from '@/components/party-legend';
 
 // --- Tipos de Datos ---
@@ -14,6 +15,57 @@ interface MapViewClientProps {
   isLoading: boolean;
   selectedMunicipio: DistritoFeature | null;
   selectedCircuito?: DistritoFeature | null;
+  highlightParty?: string | null;
+  secondaryByGeo?: MunicipioTooltipSecondaries;
+}
+
+const PBA_CENTER: LatLngExpression = [-37.0, -60.0];
+const PBA_ZOOM = 7;
+
+function CircuitosOverlayListener({ onEnable }: { onEnable: () => void }) {
+  useMapEvents({
+    overlayadd(e) {
+      if (e.name === 'Circuitos Electorales') onEnable();
+    },
+  });
+  return null;
+}
+
+function FocusSelectedMunicipio({
+  selectedMunicipio,
+  municipiosGeoJSON,
+}: {
+  selectedMunicipio: DistritoFeature | null;
+  municipiosGeoJSON: FeatureCollection | null;
+}) {
+  const map = useMap();
+  const hadSelection = useRef(false);
+  const selectedId = selectedMunicipio?.id ?? null;
+
+  useEffect(() => {
+    if (selectedId == null) {
+      if (hadSelection.current) {
+        map.flyTo(PBA_CENTER, PBA_ZOOM, { duration: 0.55 });
+        hadSelection.current = false;
+      }
+      return;
+    }
+    hadSelection.current = true;
+    const feature =
+      municipiosGeoJSON?.features.find(f => f.id == selectedId)
+      ?? (selectedMunicipio?.geometry ? selectedMunicipio : null);
+    if (!feature?.geometry) return;
+    const temp = L.geoJSON(feature);
+    const bounds = temp.getBounds();
+    if (!bounds.isValid()) return;
+    map.flyToBounds(bounds, {
+      padding: [120, 120],
+      maxZoom: 8,
+      duration: 0.55,
+    });
+  }, [selectedId, map, municipiosGeoJSON, selectedMunicipio]);
+
+  return null;
 }
 
 // --- Componente Principal del Mapa ---
@@ -25,6 +77,8 @@ export default function MapViewClient({
   isLoading: isDataLoading,
   selectedMunicipio,
   selectedCircuito = null,
+  highlightParty = null,
+  secondaryByGeo = {},
 }: MapViewClientProps) {
   const {
     municipiosGeoJSON,
@@ -34,6 +88,7 @@ export default function MapViewClient({
     styleCircuito,
     onEachFeatureMunicipio,
     onEachFeatureCircuito,
+    loadCircuitos,
   } = useMapView(
     selectedMetric,
     electoralData,
@@ -41,10 +96,31 @@ export default function MapViewClient({
     onCircuitoClick,
     selectedMunicipio,
     selectedCircuito,
+    highlightParty,
+    secondaryByGeo,
   );
 
-  const position: LatLngExpression = [-37.0, -60.0];
-  const zoom = 7;
+  const handleEnableCircuitos = useCallback(() => {
+    void loadCircuitos();
+  }, [loadCircuitos]);
+
+  const municipiosRef = useRef<L.GeoJSON | null>(null);
+
+  useEffect(() => {
+    const layer = municipiosRef.current;
+    if (!layer) return;
+    layer.setStyle(getStyleMunicipio);
+    if (!selectedMunicipio) return;
+    layer.eachLayer((path) => {
+      const id = (path as L.Layer & { feature?: { id?: string | number } }).feature?.id;
+      if (id == selectedMunicipio.id && 'bringToFront' in path) {
+        (path as L.Path).bringToFront();
+      }
+    });
+  }, [getStyleMunicipio, selectedMunicipio]);
+
+  const position: LatLngExpression = PBA_CENTER;
+  const zoom = PBA_ZOOM;
 
   const showLoading = isDataLoading || isGeoJsonLoading;
 
@@ -68,12 +144,18 @@ export default function MapViewClient({
         attributionControl={false}
       >
         <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+        <CircuitosOverlayListener onEnable={handleEnableCircuitos} />
+        <FocusSelectedMunicipio
+          selectedMunicipio={selectedMunicipio}
+          municipiosGeoJSON={municipiosGeoJSON}
+        />
         
         <LayersControl position="topright">
           <LayersControl.BaseLayer checked name="Municipios">
             {municipiosGeoJSON && (
               <GeoJSON
-                key={selectedMetric ? `metric-${selectedMetric}` : 'no-metric'}
+                ref={municipiosRef}
+                key={selectedMetric ? `metric-${selectedMetric}-${highlightParty ?? 'ganador'}` : 'no-metric'}
                 data={municipiosGeoJSON}
                 style={getStyleMunicipio}
                 onEachFeature={onEachFeatureMunicipio}
@@ -82,22 +164,22 @@ export default function MapViewClient({
           </LayersControl.BaseLayer>
 
           <LayersControl.Overlay name="Circuitos Electorales">
-            {circuitosGeoJSON && (
-              <GeoJSON
-                data={circuitosGeoJSON}
-                style={styleCircuito}
-                onEachFeature={onEachFeatureCircuito}
-                // Evita que el click sobre un circuito "burbujee" hacia la capa de
-                // municipios de abajo y des-seleccione la jerarquía superior.
-                bubblingMouseEvents={false}
-              />
-            )}
+            <LayerGroup>
+              {circuitosGeoJSON && (
+                <GeoJSON
+                  data={circuitosGeoJSON}
+                  style={styleCircuito}
+                  onEachFeature={onEachFeatureCircuito}
+                  bubblingMouseEvents={false}
+                />
+              )}
+            </LayerGroup>
           </LayersControl.Overlay>
         </LayersControl>
       </MapContainer>
 
       {!showLoading && legendParties.length > 0 && (
-        <PartyLegend parties={legendParties} />
+        <PartyLegend parties={legendParties} highlightParty={highlightParty} />
       )}
 
       {showLoading && (

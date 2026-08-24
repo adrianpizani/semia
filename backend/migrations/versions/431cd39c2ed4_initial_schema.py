@@ -4,7 +4,7 @@ Revision ID: 431cd39c2ed4
 Revises:
 Create Date: 2026-08-18 13:03:34.105452
 
-Crea las 6 tablas de WALICHO. Las tablas de PostGIS (tiger.*, spatial_ref_sys)
+Crea las 6 tablas de Semia. Las tablas de PostGIS (tiger.*, spatial_ref_sys)
 vienen preinstaladas en la imagen postgis/postgis y no las administramos acá.
 
 NOTA: este archivo fue reescrito a mano. La generación automática con
@@ -27,7 +27,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Crear las 6 tablas de WALICHO."""
+    """Crear las 6 tablas de Semia."""
     op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
 
     # ─── usuarios ───
@@ -86,15 +86,8 @@ def upgrade() -> None:
     op.create_index(op.f('ix_dimension_geografica_id'), 'dimension_geografica', ['id'])
     op.create_index(op.f('ix_dimension_geografica_nombre'), 'dimension_geografica', ['nombre'], unique=True)
     op.create_index(op.f('ix_dimension_geografica_nivel'), 'dimension_geografica', ['nivel'])
-    # GeoAlchemy2 (spatial_index=True) crea este GiST al hacer create_all;
-    # hay que replicarlo acá o las queries espaciales del mapa no lo usan.
-    op.create_index(
-        'idx_dimension_geografica_geometria',
-        'dimension_geografica',
-        ['geometria'],
-        unique=False,
-        postgresql_using='gist',
-    )
+    # GeoAlchemy2 crea idx_dimension_geografica_geometria (GiST) al crear la
+    # columna Geometry; no hace falta (y falla) repetirlo con create_index.
 
     # ─── metricas ───
     op.create_table(
@@ -152,7 +145,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Borrar las 6 tablas de WALICHO. Orden importa por las FKs."""
+    """Borrar las 6 tablas de Semia. Orden importa por las FKs."""
     op.drop_index(op.f('ix_hechos_datos_fecha_dato'), table_name='hechos_datos')
     op.drop_index(op.f('ix_hechos_datos_archivo_id'), table_name='hechos_datos')
     op.drop_index(op.f('ix_hechos_datos_metrica_id'), table_name='hechos_datos')
@@ -167,7 +160,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_metricas_id'), table_name='metricas')
     op.drop_table('metricas')
 
-    op.drop_index('idx_dimension_geografica_geometria', table_name='dimension_geografica')
     op.drop_index(op.f('ix_dimension_geografica_nivel'), table_name='dimension_geografica')
     op.drop_index(op.f('ix_dimension_geografica_nombre'), table_name='dimension_geografica')
     op.drop_index(op.f('ix_dimension_geografica_id'), table_name='dimension_geografica')
