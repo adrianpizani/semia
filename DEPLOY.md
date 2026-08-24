@@ -1,6 +1,6 @@
 # Deploy — AWS
 
-Plan y runbook para el **primer deploy** de WALICHO. Auth, Alembic y las imágenes de producción ya están en el repo. Lo que falta es la infra en AWS y, después, CI/CD.
+Plan y runbook para el **primer deploy** de Semia. Auth, Alembic y las imágenes de producción ya están en el repo. Lo que falta es la infra en AWS y, después, CI/CD.
 
 Orden: **EC2 manual → HTTPS → seed → backups → CI en PRs → deploy automático**.
 
@@ -15,7 +15,7 @@ Documentación de producto y arranque local: [`README.md`](./README.md). Bitáco
 - `frontend/Dockerfile` multi-stage (`next build` → `next start`)
 - `backend/Dockerfile` con workers, Alembic, GeoJSON de seed y entrypoint (`alembic upgrade head` antes de uvicorn)
 - `docker-compose.prod.yml` sin bind-mounts de código, `COOKIE_SECURE=true`, volumen `postgres_data`
-- `nginx/nginx.prod.conf` + `nginx/conf.d/walicho.conf` (80 → 443, `/api/` → backend, `/` → frontend, uploads 300 MB)
+- `nginx/nginx.prod.conf` + `nginx/conf.d/semia.conf` (80 → 443, `/api/` → backend, `/` → frontend, uploads 300 MB)
 - `.env.example` y `.gitignore` (`.env`, `nginx/certs/`, `*.pem`)
 
 ### Próximo objetivo
@@ -44,11 +44,11 @@ Si el password de Postgres tiene `@`, `:`, `%` u otros caracteres raros, hay que
 
 1. Launch Instance: Ubuntu 22.04 LTS, **t3.micro**, 30 GB gp3.
 2. Security group inbound: SSH (22) solo tu IP; HTTP (80) y HTTPS (443) `0.0.0.0/0`.
-3. Key pair: `walicho-key.pem` (`chmod 400` en tu máquina).
+3. Key pair: `semia-key.pem` (`chmod 400` en tu máquina).
 4. Elastic IP (que no cambie al reiniciar).
 
 ```bash
-ssh -i ~/.ssh/walicho-key.pem ubuntu@<elastic-ip>
+ssh -i ~/.ssh/semia-key.pem ubuntu@<elastic-ip>
 
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y docker.io docker-compose-v2 certbot
@@ -64,8 +64,8 @@ No instales nginx en el host: el de Docker es el que sirve 80/443.
 
 ```bash
 cd ~
-git clone https://github.com/<usuario>/walicho.git
-cd walicho
+git clone https://github.com/<usuario>/semia.git
+cd semia
 cp .env.example .env
 chmod 600 .env
 nano .env
@@ -74,18 +74,18 @@ nano .env
 En prod, como mínimo:
 
 ```bash
-POSTGRES_USER=walicho
+POSTGRES_USER=semia
 POSTGRES_PASSWORD=<fuerte>
 POSTGRES_DB=pba_dashboard
-DATABASE_URL=postgresql+asyncpg://walicho:<fuerte>@db:5432/pba_dashboard
+DATABASE_URL=postgresql+asyncpg://semia:<fuerte>@db:5432/pba_dashboard
 SECRET_KEY=$(openssl rand -hex 32)
 AUTH_SECRET=<el mismo que SECRET_KEY>
-ADMIN_EMAIL=admin@walicho.com
+ADMIN_EMAIL=admin@semia.studio
 ADMIN_PASSWORD=<cambiar el default>
 ```
 
 `COOKIE_SECURE` lo fuerza `docker-compose.prod.yml` a `true`.  
-`EmailStr` rechaza dominios `.local`: el admin tiene que ser un mail con dominio real (`admin@walicho.com`).
+`EmailStr` rechaza dominios `.local`: el admin tiene que ser un mail con dominio real (`admin@semia.studio`).
 
 ---
 
@@ -129,35 +129,35 @@ docker compose -f docker-compose.prod.yml exec -e PYTHONPATH=/ backend python -m
 
 Antes de apuntar el DNS, nginx de prod **exige** `nginx/certs/fullchain.pem` y `privkey.pem`. Para probar en local alcanza un cert self-signed (la carpeta está en `.gitignore`).
 
-1. Cloudflare: sitio nuevo, nameservers, registro `A app.walicho.com <elastic-ip>` con proxy **gris** (DNS only) hasta que certbot valide.
+1. Cloudflare: sitio nuevo, nameservers, registro `A app.semia.studio <elastic-ip>` con proxy **gris** (DNS only) hasta que certbot valide.
 2. Certbot (nginx Docker ocupa el 80: hay que pararlo un momento):
 
 ```bash
-dig app.walicho.com
+dig app.semia.studio
 docker compose -f docker-compose.prod.yml stop nginx
-sudo certbot certonly --standalone -d app.walicho.com
-sudo mkdir -p ~/walicho/nginx/certs
-sudo cp /etc/letsencrypt/live/app.walicho.com/fullchain.pem ~/walicho/nginx/certs/
-sudo cp /etc/letsencrypt/live/app.walicho.com/privkey.pem ~/walicho/nginx/certs/
-sudo chmod -R 755 ~/walicho/nginx/certs
+sudo certbot certonly --standalone -d app.semia.studio
+sudo mkdir -p ~/semia/nginx/certs
+sudo cp /etc/letsencrypt/live/app.semia.studio/fullchain.pem ~/semia/nginx/certs/
+sudo cp /etc/letsencrypt/live/app.semia.studio/privkey.pem ~/semia/nginx/certs/
+sudo chmod -R 755 ~/semia/nginx/certs
 docker compose -f docker-compose.prod.yml start nginx
 ```
 
 3. Renovación (cron):
 
 ```cron
-0 3 * * * root certbot renew --quiet && cp /etc/letsencrypt/live/app.walicho.com/fullchain.pem /home/ubuntu/walicho/nginx/certs/ && cp /etc/letsencrypt/live/app.walicho.com/privkey.pem /home/ubuntu/walicho/nginx/certs/ && docker compose -f /home/ubuntu/walicho/docker-compose.prod.yml restart nginx
+0 3 * * * root certbot renew --quiet && cp /etc/letsencrypt/live/app.semia.studio/fullchain.pem /home/ubuntu/semia/nginx/certs/ && cp /etc/letsencrypt/live/app.semia.studio/privkey.pem /home/ubuntu/semia/nginx/certs/ && docker compose -f /home/ubuntu/semia/docker-compose.prod.yml restart nginx
 ```
 
 4. Con HTTPS andando, activar el proxy naranja de Cloudflare.
 
-El `server_name` en `nginx/conf.d/walicho.conf` hoy es `app.walicho.com`: cambiarlo al dominio real antes del corte.
+El `server_name` en `nginx/conf.d/semia.conf` es `app.semia.studio`.
 
 ---
 
 ## 6. Verificar
 
-- `https://app.walicho.com` → `/login`
+- `https://app.semia.studio` → `/login`
 - Login con el admin del `.env`
 - Subir un CSV chico y ver el mapa
 
@@ -167,18 +167,18 @@ El `server_name` en `nginx/conf.d/walicho.conf` hoy es `app.walicho.com`: cambia
 
 ## 7. Backups
 
-El compose de prod **no** fija `container_name`. El dump tiene que usar el nombre que asigne Compose (por ejemplo `walicho-db-1`), o el ID:
+El compose de prod **no** fija `container_name`. El dump tiene que usar el nombre que asigne Compose (por ejemplo `semia-db-1`), o el ID:
 
 ```bash
 mkdir -p ~/backups
-docker compose -f ~/walicho/docker-compose.prod.yml exec -T db \
-  pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > ~/backups/walicho-$(date +%F).sql.gz
+docker compose -f ~/semia/docker-compose.prod.yml exec -T db \
+  pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > ~/backups/semia-$(date +%F).sql.gz
 ```
 
 Cron (ajustá usuario/DB):
 
 ```cron
-0 2 * * * ubuntu cd /home/ubuntu/walicho && docker compose -f docker-compose.prod.yml exec -T db pg_dump -U walicho pba_dashboard | gzip > /home/ubuntu/backups/walicho-$(date +\%F).sql.gz && find /home/ubuntu/backups -mtime +7 -delete
+0 2 * * * ubuntu cd /home/ubuntu/semia && docker compose -f docker-compose.prod.yml exec -T db pg_dump -U semia pba_dashboard | gzip > /home/ubuntu/backups/semia-$(date +\%F).sql.gz && find /home/ubuntu/backups -mtime +7 -delete
 ```
 
 Cuando crezca: copiar a S3 con lifecycle de 30 días.
@@ -188,7 +188,7 @@ Cuando crezca: copiar a S3 con lifecycle de 30 días.
 ## 8. Actualizar el servidor (ciclo manual)
 
 ```bash
-cd ~/walicho
+cd ~/semia
 git pull
 docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 ```
@@ -202,7 +202,7 @@ El entrypoint vuelve a correr `alembic upgrade head` (no-op si no hay revisiones
 Cuando el ciclo de arriba esté estable:
 
 1. **CI en PRs** (`.github/workflows/ci.yml`): lint/build frontend; sanity import del backend. Tests cuando existan (`pytest` / `npm test`).
-2. **ECR** en `sa-east-1`: `walicho-backend`, `walicho-frontend`.
+2. **ECR** en `sa-east-1`: `semia-backend`, `semia-frontend`.
 3. **OIDC** GitHub → AWS (sin access keys). Role con ECR + SSM.
 4. **Deploy en push a `main`**: build en GitHub (no en el t3.micro), push a ECR, `docker compose pull` + `up` en el EC2 vía SSM.
 5. Branch protection en `main`: exigir que CI pase.

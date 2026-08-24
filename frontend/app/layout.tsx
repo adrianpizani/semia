@@ -9,7 +9,7 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Dashboard de Análisis Político",
+  title: "semIA — Dashboard de Análisis Político",
   description: "Plataforma de análisis político con visualización de datos geográficos",
   generator: "v0.app",
 }

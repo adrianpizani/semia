@@ -1,22 +1,25 @@
 "use client"
 
-import { useState, useEffect, useCallback, SetStateAction } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import dynamic from 'next/dynamic';
+import Link from "next/link"
 import { FilterBar } from "@/components/filter-bar"
 import { DashboardCharts } from "@/components/dashboard-charts"
+import { CruceScatter } from "@/components/cruce-scatter"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { MapPin } from "lucide-react"
-import { getMetricas, getElectoralData, getGenericMetricData, getMetricOpciones } from "@/lib/api"
-import { decideScale } from "@/lib/range-utils"
+import { Button } from "@/components/ui/button"
+import { MapPin, Medal, Table2 } from "lucide-react"
 import { formatCompact } from "@/lib/range-utils"
-import { Metrica, TipoMetricaEnum, GenericData, AnyFiltro } from "@/lib/types"
+import { MunicipioTooltipSecondaries } from "@/lib/types"
+import { getPartyVoteShare } from "@/lib/party-color"
+import { formatRank, rankDescending } from "@/lib/ranking"
+import { useDashboardView } from "@/hooks/use-dashboard-view"
 
 const MapViewClient = dynamic(() => import('@/components/map-view-client'), {
   ssr: false,
   loading: () => <div className="w-full h-full flex items-center justify-center bg-gray-100"><p>Cargando mapa...</p></div>,
 });
 
-// --- Helper Function ---
 const getTopParties = (resultados: any[], count = 3) => {
   if (!resultados || resultados.length === 0) return []
 
@@ -32,193 +35,15 @@ const getTopParties = (resultados: any[], count = 3) => {
     }))
 }
 
-// --- Main Component ---
 export default function DashboardPage() {
-  const [activeMetrics, setActiveMetrics] = useState<Metrica[]>([])
-  const [selectedPrimaryMetric, setSelectedPrimaryMetric] = useState<number | null>(null)
-  const [selectedSecondaryMetrics, setSelectedSecondaryMetrics] = useState<number[]>([])
-  const [filters, setFilters] = useState<AnyFiltro[]>([])
+  const view = useDashboardView()
   const [selectedMunicipio, setSelectedMunicipio] = useState<any | null>(null)
   const [selectedCircuito, setSelectedCircuito] = useState<any | null>(null)
-  const [electoralData, setElectoralData] = useState<any | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [secondaryMetricsData, setSecondaryMetricsData] = useState<{[metricId: number]: GenericData[]}>({});
-  const [availableParties, setAvailableParties] = useState<string[]>([]);
-  const [availableYears, setAvailableYears] = useState<string[]>([]);
-  const [availableVoteTypes, setAvailableVoteTypes] = useState<string[]>([]);
-  const [metricRanges, setMetricRanges] = useState<{[metricId: number]: {min: number, max: number, scale: 'log' | 'linear'}}>({});
 
-  // Fetch active metrics on mount
   useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        const allMetrics = await getMetricas()
-        setActiveMetrics(allMetrics.filter(m => m.is_active))
-      } catch (error) {
-        console.error("Error fetching active metrics:", error)
-      }
-    }
-    fetchMetrics()
-  }, [])
-
-  // Reset available parties when primary metric changes
-  useEffect(() => {
-    setAvailableParties([]);
-  }, [selectedPrimaryMetric]);
-
-  // Cargar opciones disponibles (años, tipos de voto) de la métrica electoral principal
-  // para poblar los selectores de filtro.
-  useEffect(() => {
-    let cancelled = false;
-    const loadOpciones = async () => {
-      if (selectedPrimaryMetric === null) {
-        setAvailableYears([]);
-        setAvailableVoteTypes([]);
-        return;
-      }
-      const metricInfo = activeMetrics.find(m => m.id === selectedPrimaryMetric);
-      if (metricInfo?.tipo === TipoMetricaEnum.ELECTORAL) {
-        const opciones = await getMetricOpciones(selectedPrimaryMetric);
-        if (!cancelled) {
-          setAvailableYears(opciones.años);
-          setAvailableVoteTypes(opciones.votos_tipos);
-        }
-      } else {
-        setAvailableYears([]);
-        setAvailableVoteTypes([]);
-      }
-    };
-    loadOpciones();
-    return () => { cancelled = true; };
-  }, [selectedPrimaryMetric, activeMetrics]);
-
-  // Fetch electoral data when primary metric or filters change
-  useEffect(() => {
-    const fetchElectoralData = async () => {
-      if (selectedPrimaryMetric === null) {
-        setElectoralData(null)
-        setSelectedMunicipio(null)
-        return
-      }
-
-      const metricInfo = activeMetrics.find(m => m.id === selectedPrimaryMetric)
-
-      if (metricInfo?.tipo === TipoMetricaEnum.ELECTORAL) {
-        setIsLoading(true)
-        try {
-          const data = await getElectoralData(selectedPrimaryMetric, filters)
-          setElectoralData(data)
-          
-          // Extract and merge unique parties
-          if (data && data.length > 0) {
-            setAvailableParties(prevParties => {
-              const partiesSet = new Set(prevParties);
-              data.forEach((d: any) => {
-                d.resultados.forEach((r: any) => partiesSet.add(r.partido));
-              });
-              return Array.from(partiesSet).sort();
-            });
-          }
-        } catch (error) {
-          console.error("Error fetching electoral data:", error)
-          setElectoralData(null)
-        } finally {
-          setIsLoading(false)
-        }
-      } else {
-        setElectoralData(null)
-      }
-      setSelectedMunicipio(null)
-    }
-
-    fetchElectoralData()
-  }, [selectedPrimaryMetric, filters, activeMetrics])
-
-  // Fetch data for selected secondary metrics when they or filters change
-  useEffect(() => {
-    const fetchSecondaryData = async () => {
-      const newSecondaryMetricsData: {[metricId: number]: GenericData[]} = { ...secondaryMetricsData };
-      const metricsToFetch: number[] = [];
-      const currentlySelectedGenericMetrics = new Set<number>();
-
-      for (const metricId of selectedSecondaryMetrics) {
-        const metricInfo = activeMetrics.find(m => m.id === metricId);
-        if (metricInfo && metricInfo.tipo !== TipoMetricaEnum.ELECTORAL) {
-          currentlySelectedGenericMetrics.add(metricId);
-          metricsToFetch.push(metricId);
-        }
-      }
-
-      if (metricsToFetch.length > 0) {
-        // Los filtros electorales (partido, año, tipo de voto) NO se aplican a métricas
-        // genéricas (socioeconómico, PBG), que no tienen esas dimensiones; solo les
-        // aplican rangos y demás filtros no electorales. Evita que queden vacías.
-        //
-        // Además, el rango de la PROPIA métrica NO se aplica a su propio fetch:
-        // un slider de PBG es un filtro de VISIBILIDAD (qué municipios entran al
-        // cruce del mapa electoral), no un filtro de VALOR. Si el municipio
-        // seleccionado tiene su PBG fuera del rango, queremos seguir viendo el
-        // número real en la card de "Indicadores seleccionados".
-        const ELECTORAL_DIMENSIONS = new Set(['agrupacion_nombre', 'año', 'votos_tipo']);
-        const genericFilters = (filters ?? []).filter(f =>
-          !(f.tipo === 'categoria' && ELECTORAL_DIMENSIONS.has(f.dimension))
-        );
-
-        await Promise.all(metricsToFetch.map(async (metricId) => {
-          try {
-            // Para esta métrica, descartar su propio filtro de rango.
-            const crossFiltersOnly = genericFilters.filter(f =>
-              !(f.metrica_id === metricId && f.tipo === 'rango')
-            );
-            const data = await getGenericMetricData(metricId, crossFiltersOnly);
-            newSecondaryMetricsData[metricId] = data;
-          } catch (error) {
-            console.error(`Error fetching data for secondary metric ${metricId}:`, error);
-            newSecondaryMetricsData[metricId] = [];
-          }
-        }));
-      }
-
-      const cleanedSecondaryMetricsData: {[metricId: number]: GenericData[]} = {};
-      for (const metricId of Array.from(currentlySelectedGenericMetrics)) {
-        if (newSecondaryMetricsData[metricId]) {
-          cleanedSecondaryMetricsData[metricId] = newSecondaryMetricsData[metricId];
-        }
-      }
-      
-      if (JSON.stringify(cleanedSecondaryMetricsData) !== JSON.stringify(secondaryMetricsData)) {
-        setSecondaryMetricsData(cleanedSecondaryMetricsData);
-      }
-    };
-
-    fetchSecondaryData();
-  }, [selectedSecondaryMetrics, filters, activeMetrics]);
-
-  // Establece el rango base (min/max/escala) de cada métrica secundaria desde su data
-  // SIN filtrar. Así el slider tiene una escala fija que NO se reinicia ni se encoge
-  // cuando se aplica un filtro de rango (se desacopla el rango base de la selección).
-  useEffect(() => {
-    const missing = selectedSecondaryMetrics.filter(
-      id => !metricRanges[id] && activeMetrics.find(m => m.id === id)
-    );
-    if (missing.length === 0) return;
-    let cancelled = false;
-    Promise.all(missing.map(async (metricId) => {
-      try {
-        const data = await getGenericMetricData(metricId, []);
-        const values = data.map(d => d.valor).filter((v): v is number => v !== null && Number.isFinite(v));
-        if (values.length > 0 && !cancelled) {
-          const min = Math.min(...values);
-          const max = Math.max(...values);
-          const scale = decideScale(values);
-          setMetricRanges(prev => (prev[metricId] ? prev : { ...prev, [metricId]: { min, max, scale } }));
-        }
-      } catch (error) {
-        console.error(`Error fetching range for metric ${metricId}:`, error);
-      }
-    }));
-    return () => { cancelled = true; };
-  }, [selectedSecondaryMetrics, metricRanges, activeMetrics]);
+    setSelectedMunicipio(null)
+    setSelectedCircuito(null)
+  }, [view.selectedPrimaryMetric, view.electoralQueryKey])
 
   const handleMunicipioClick = useCallback((municipio: any) => {
     if (selectedMunicipio && selectedMunicipio.id === municipio.id) {
@@ -226,7 +51,6 @@ export default function DashboardPage() {
     } else {
       setSelectedMunicipio(municipio);
     }
-    // Al cambiar de municipio, reseteamos el circuito seleccionado
     setSelectedCircuito(null);
   }, [selectedMunicipio]);
 
@@ -238,19 +62,24 @@ export default function DashboardPage() {
     }
   }, [selectedCircuito]);
 
-  const handleFiltersChange = useCallback((updater: SetStateAction<AnyFiltro[]>) => {
-    setFilters(updater);
-  }, []);
+  const handleCrucePointClick = useCallback((geografiaId: number, nombre: string) => {
+    if (selectedMunicipio && selectedMunicipio.id === geografiaId) {
+      setSelectedMunicipio(null);
+    } else {
+      setSelectedMunicipio({ id: geografiaId, properties: { nombre, nivel: "Partido" } });
+    }
+    setSelectedCircuito(null);
+  }, [selectedMunicipio]);
 
-  const selectedMunicipioData = electoralData && selectedMunicipio
-    ? electoralData.find(d => d.geografia_id === selectedMunicipio.id)
+  const selectedMunicipioData = view.electoralData && selectedMunicipio
+    ? view.electoralData.find(d => d.geografia_id === selectedMunicipio.id)
     : null;
 
   const selectedMunicipioSecondaryMetricsData = selectedMunicipio
-    ? selectedSecondaryMetrics
+    ? view.selectedSecondaryMetrics
         .map(metricId => {
-          const metricDataForGeo = secondaryMetricsData[metricId]?.find(d => d.geografia_id === selectedMunicipio.id);
-          const metricInfo = activeMetrics.find(m => m.id === metricId);
+          const metricDataForGeo = view.secondaryMetricsData[metricId]?.find(d => d.geografia_id === selectedMunicipio.id);
+          const metricInfo = view.activeMetrics.find(m => m.id === metricId);
           if (metricDataForGeo && metricInfo) {
             return { ...metricDataForGeo, tipo: metricInfo.tipo };
           }
@@ -260,38 +89,72 @@ export default function DashboardPage() {
     : [];
 
   const topParties = selectedMunicipioData ? getTopParties(selectedMunicipioData.resultados) : []
-  const primaryMetricName = activeMetrics.find(m => m.id === selectedPrimaryMetric)?.nombre_amigable || "Métrica Principal";
+  const primaryMetricName = view.activeMetrics.find(m => m.id === view.selectedPrimaryMetric)?.nombre_amigable || "Métrica Principal";
+  const selectedPartyShare = selectedMunicipioData && view.selectedParty
+    ? getPartyVoteShare(selectedMunicipioData.resultados, view.selectedParty)
+    : null;
+  const selectedPartyVotos = selectedMunicipioData && view.selectedParty
+    ? selectedMunicipioData.resultados.find((r: { partido: string }) => r.partido === view.selectedParty)?.votos ?? 0
+    : null;
+
+  const secondaryByGeo = useMemo((): MunicipioTooltipSecondaries => {
+    const byGeo: MunicipioTooltipSecondaries = {};
+    for (const metricId of view.selectedSecondaryMetrics) {
+      const rows = view.secondaryMetricsData[metricId] ?? [];
+      for (const row of rows) {
+        if (row.valor === null || !Number.isFinite(row.valor)) continue;
+        if (!byGeo[row.geografia_id]) byGeo[row.geografia_id] = [];
+        byGeo[row.geografia_id].push({ nombre: row.metrica_nombre, valor: row.valor });
+      }
+    }
+    return byGeo;
+  }, [view.selectedSecondaryMetrics, view.secondaryMetricsData]);
 
   return (
     <div className="flex h-screen flex-col">
       <FilterBar
-        activeMetrics={activeMetrics}
-        selectedPrimaryMetric={selectedPrimaryMetric}
-        onPrimaryMetricChange={setSelectedPrimaryMetric}
-        selectedSecondaryMetrics={selectedSecondaryMetrics}
-        onSecondaryMetricsChange={setSelectedSecondaryMetrics}
-        filters={filters}
-        onFiltersChange={handleFiltersChange}
-        availableParties={availableParties}
-        availableYears={availableYears}
-        availableVoteTypes={availableVoteTypes}
-        metricRanges={metricRanges}
+        activeMetrics={view.activeMetrics}
+        selectedPrimaryMetric={view.selectedPrimaryMetric}
+        onPrimaryMetricChange={view.setSelectedPrimaryMetric}
+        selectedSecondaryMetrics={view.selectedSecondaryMetrics}
+        onSecondaryMetricsChange={view.setSelectedSecondaryMetrics}
+        filters={view.filters}
+        onFiltersChange={view.handleFiltersChange}
+        availableParties={view.availableParties}
+        availableYears={view.availableYears}
+        availableVoteTypes={view.availableVoteTypes}
+        metricRanges={view.metricRanges}
+        actions={
+          <Button variant="outline" size="sm" asChild={!!view.selectedPrimaryMetric} disabled={!view.selectedPrimaryMetric}>
+            {view.selectedPrimaryMetric ? (
+              <Link href="/analisis">
+                <Table2 className="mr-1 h-4 w-4" />
+                Ver análisis
+              </Link>
+            ) : (
+              <span className="inline-flex items-center">
+                <Table2 className="mr-1 h-4 w-4" />
+                Ver análisis
+              </span>
+            )}
+          </Button>
+        }
       />
       <div className="flex flex-1 gap-4 overflow-hidden p-4">
         <div className="flex-[3] overflow-hidden rounded-lg border border-border">
           <MapViewClient
-            selectedMetric={selectedPrimaryMetric}
-            electoralData={electoralData}
+            selectedMetric={view.selectedPrimaryMetric}
+            electoralData={view.electoralData}
             onMunicipioClick={handleMunicipioClick}
             onCircuitoClick={handleCircuitoClick}
-            isLoading={isLoading}
+            isLoading={view.isLoading}
             selectedMunicipio={selectedMunicipio}
             selectedCircuito={selectedCircuito}
+            highlightParty={view.selectedParty}
+            secondaryByGeo={secondaryByGeo}
           />
         </div>
         <div className="flex-[2] space-y-4 overflow-y-auto">
-          {/* Indicador del circuito seleccionado: muestra el nivel jerárquico actual
-              (Partido → Circuito) como capa de contexto, sin reemplazar el municipio. */}
           {selectedCircuito && (
             <Card className="border-blue-500 bg-blue-50/50">
               <CardHeader className="pb-3 pt-4">
@@ -307,9 +170,6 @@ export default function DashboardPage() {
             </Card>
           )}
 
-          {/* Side-by-side: Resultados (primaria) + Indicadores seleccionados (secundarias).
-              Comparten la misma fila en un grid 2-cols dentro de la columna derecha,
-              para que el cliente vea toda la info del municipio clickeado de un vistazo. */}
           <div className="grid grid-cols-2 gap-4">
             <Card>
               <CardHeader className="pb-2 pt-4">
@@ -318,7 +178,9 @@ export default function DashboardPage() {
                 </CardTitle>
                 <CardDescription className="text-sm">
                   {selectedMunicipioData
-                    ? `Total de votos: ${selectedMunicipioData.resultados.reduce((acc: number, p: any) => acc + p.votos, 0).toLocaleString('es-AR')}`
+                    ? view.selectedParty && selectedPartyShare !== null
+                      ? `${view.selectedParty}: ${(selectedPartyShare * 100).toFixed(1)}% (${(selectedPartyVotos ?? 0).toLocaleString('es-AR')} votos)`
+                      : `Total de votos: ${selectedMunicipioData.resultados.reduce((acc: number, p: any) => acc + p.votos, 0).toLocaleString('es-AR')}`
                     : "Selecciona un municipio en el mapa para ver los detalles"}
                 </CardDescription>
               </CardHeader>
@@ -342,10 +204,6 @@ export default function DashboardPage() {
                 )}
               </CardContent>
             </Card>
-            {/* Ficha compacta del municipio: siempre visible cuando hay selección,
-                muestre secundarias si las hay, si no invita a sumar métricas.
-                Antes se ocultaba si no había secundarias -> el usuario perdía el
-                feedback de qué municipio estaba mirando. */}
             {selectedMunicipio && (
               <Card>
                 <CardHeader className="pb-2 pt-4">
@@ -355,16 +213,37 @@ export default function DashboardPage() {
                 <CardContent className="pt-1">
                   {selectedMunicipioSecondaryMetricsData.length > 0 ? (
                     <ul className="divide-y">
-                      {selectedMunicipioSecondaryMetricsData.map((data, index) => (
-                        <li key={index} className="flex items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0">
-                          <span className="text-sm text-muted-foreground truncate" title={data.metrica_nombre}>
-                            {data.metrica_nombre}
-                          </span>
-                          <span className="font-mono text-sm font-semibold tabular-nums">
-                            {data.valor !== null ? formatCompact(data.valor) : 'N/A'}
-                          </span>
-                        </li>
-                      ))}
+                      {selectedMunicipioSecondaryMetricsData.map((data, index) => {
+                        const rank = data.valor !== null
+                          ? rankDescending(
+                              (view.secondaryMetricsData[data.metrica_id] ?? [])
+                                .map(row => row.valor)
+                                .filter((v): v is number => v !== null && Number.isFinite(v)),
+                              data.valor,
+                            )
+                          : null;
+                        return (
+                          <li key={index} className="flex items-center justify-between gap-3 py-1.5 first:pt-0 last:pb-0">
+                            <span className="text-sm text-muted-foreground truncate" title={data.metrica_nombre}>
+                              {data.metrica_nombre}
+                            </span>
+                            <span className="shrink-0 text-right">
+                              <span className="font-mono text-sm font-semibold tabular-nums">
+                                {data.valor !== null ? formatCompact(data.valor) : 'N/A'}
+                              </span>
+                              {rank && (
+                                <span
+                                  className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-muted-foreground tabular-nums"
+                                  title="Puesto entre municipios. El 1 es el valor más alto."
+                                >
+                                  <Medal className="h-3 w-3 shrink-0" aria-hidden />
+                                  <span>Puesto {formatRank(rank.rank, rank.n)}</span>
+                                </span>
+                              )}
+                            </span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   ) : (
                     <p className="text-xs text-muted-foreground">
@@ -376,10 +255,21 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Distribución de votos por partido para el municipio seleccionado. */}
-          {selectedMunicipioData && (
+          {view.showCruce && view.cruceMetricId && view.electoralData ? (
+            <CruceScatter
+              electoralData={view.electoralData}
+              secondaryData={view.secondaryMetricsData[view.cruceMetricId] ?? []}
+              secondaryOptions={view.numericSecondaries}
+              selectedSecondaryId={view.cruceMetricId}
+              onSecondaryChange={view.setCruceMetricId}
+              selectedParty={view.selectedParty}
+              selectedGeografiaId={selectedMunicipio?.id ?? null}
+              onPointClick={handleCrucePointClick}
+              rangeFilterActive={view.cruceRangeFilterActive}
+            />
+          ) : selectedMunicipioData ? (
             <DashboardCharts selectionData={selectedMunicipioData} />
-          )}
+          ) : null}
         </div>
       </div>
     </div>

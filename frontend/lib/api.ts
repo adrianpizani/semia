@@ -1,16 +1,39 @@
 // Helper to determine the base URL for API calls
 const getBaseUrl = () => {
   if (typeof window !== 'undefined') {
-    // Client-side: use relative path
+    // Browser: same origin (Next rewrites or nginx /api → backend).
     return '';
   }
-  // Server-side: use absolute path for server-side rendering
-  return process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : 'http://localhost:3000'; // Default to localhost for local development
+  // Server (RSC): hablar directo al backend. En Docker es http://backend:8000.
+  return process.env.BACKEND_URL || 'http://localhost:8000';
 };
 
 const API_BASE_URL = `${getBaseUrl()}/api/v1`;
+
+async function cookieHeaderForServer(): Promise<string> {
+  if (typeof window !== 'undefined') return '';
+  try {
+    const { cookies } = await import('next/headers');
+    const store = await cookies();
+    return store.getAll().map((c) => `${c.name}=${c.value}`).join('; ');
+  } catch {
+    return '';
+  }
+}
+
+async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const cookie = await cookieHeaderForServer();
+  if (cookie && !headers.has('Cookie')) {
+    headers.set('Cookie', cookie);
+  }
+  return fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers,
+    credentials: 'include',
+    cache: init.cache ?? 'no-store',
+  });
+}
 
 export const getMunicipiosGeoJSON = async () => {
   try {
@@ -40,13 +63,12 @@ export const getCircuitosGeoJSON = async () => {
 
 export const getArchivos = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/archivos`, { cache: 'no-store' });
+    const response = await apiFetch('/archivos');
     if (!response.ok) {
-      throw new Error('Network response was not ok for Archivos');
+      return [];
     }
     return await response.json();
-  } catch (error) {
-    console.error('Error fetching archivos:', error);
+  } catch {
     return [];
   }
 };
@@ -56,6 +78,7 @@ export const uploadArchivo = async (formData: FormData) => {
     const response = await fetch(`${API_BASE_URL}/archivos`, {
       method: 'POST',
       body: formData,
+      credentials: 'include',
     });
     if (!response.ok) {
       const errorData = await response.json();
@@ -92,13 +115,12 @@ export const getGeoData = async (archivoIds: number[], agregacion: 'sum' | 'avg'
 
 export const getMetricas = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/metricas`, { cache: 'no-store' });
+    const response = await apiFetch('/metricas');
     if (!response.ok) {
-      throw new Error('Network response was not ok for Metricas');
+      return [];
     }
     return await response.json();
-  } catch (error) {
-    console.error('Error fetching metrics:', error);
+  } catch {
     return [];
   }
 };
@@ -123,6 +145,7 @@ export const deleteArchivo = async (archivoId: number) => {
   try {
     const response = await fetch(`${API_BASE_URL}/archivos/${archivoId}`, {
       method: 'DELETE',
+      credentials: 'include',
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({})); // Intenta parsear JSON, si falla, devuelve objeto vacío
@@ -236,20 +259,22 @@ export const login = async (email: string, password: string) => {
 
 export const getMe = async (): Promise<Usuario | null> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/auth/me`, { cache: 'no-store' });
+    const response = await apiFetch('/auth/me');
     if (!response.ok) return null;
     return await response.json();
-  } catch (error) {
-    console.error('Error fetching current user:', error);
+  } catch {
     return null;
   }
 };
 
 export const logout = async () => {
   try {
-    await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST' });
-  } catch (error) {
-    console.error('Error al cerrar sesión:', error);
+    await fetch(`${API_BASE_URL}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  } catch {
+    // El redirect de abajo igual cierra la sesión en el browser.
   }
   if (typeof window !== 'undefined') {
     window.location.href = '/login';

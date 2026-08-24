@@ -1,6 +1,6 @@
 """Alembic environment — async (asyncpg).
 
-Customizado para WALICHO:
+Customizado para Semia:
   - Lee DATABASE_URL de database (mismo engine que el backend).
   - target_metadata apunta a Base.metadata de los modelos SQLAlchemy.
   - Soporta autogenerate: `alembic revision --autogenerate -m "..."`.

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Genera un dataset socioeconómico realista para la demo de WALICHO.
+Genera un dataset socioeconómico realista para la demo de Semia.
 
 Diferencias con generate_socioeconomico_csv.py (el original):
 - Los indicadores socioeconómicos correlacionan con un perfil electoral implícito

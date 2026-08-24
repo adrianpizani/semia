@@ -123,13 +123,38 @@
    municipios "saltan" de un partido a otro al instante, lo que rompe la
    lectura del cruce. fill-opacity también transiciona para suavizar el
    caso del municipio gris (sin ganador). */
-path.walicho-municipio {
+path.semia-municipio {
   transition: fill 250ms ease-out, fill-opacity 250ms ease-out;
 }
 /* Hover/selected también de forma inmediata — si heredaran la transición, el
    feedback de "estoy clickeando" se sentiría con lag. */
-path.walicho-municipio--instant {
+path.semia-municipio--instant {
   transition: none;
+}
+
+/* Landing: municipios interactivos en el banner de login */
+.landing-municipio {
+  transition:
+    fill 220ms ease-out,
+    fill-opacity 220ms ease-out,
+    stroke 220ms ease-out,
+    stroke-width 220ms ease-out,
+    filter 220ms ease-out;
+  cursor: pointer;
+}
+
+.landing-municipio--active {
+  animation: landing-municipio-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes landing-municipio-pulse {
+  0%,
+  100% {
+    fill-opacity: 0.88;
+  }
+  50% {
+    fill-opacity: 1;
+  }
 }
 
 .leaflet-popup-content-wrapper {

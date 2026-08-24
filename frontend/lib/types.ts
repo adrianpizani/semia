@@ -43,6 +43,13 @@ export interface GenericData {
   valor: number | null;
 }
 
+export type MunicipioTooltipSecondary = {
+  nombre: string;
+  valor: number;
+};
+
+export type MunicipioTooltipSecondaries = Record<number, MunicipioTooltipSecondary[]>;
+
 // --- Tipos para Filtros Genéricos ---
 
 interface FiltroBase {

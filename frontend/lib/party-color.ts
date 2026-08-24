@@ -44,3 +44,24 @@ export function getPartiesColorMap(parties: string[]): Record<string, string> {
   }
   return map;
 }
+
+// Opacidad del mapa en modo "intensidad": 0% de votos = casi transparente,
+// 100% = saturado. Compartida con la leyenda para que coincida con el mapa.
+const INTENSITY_OPACITY_MIN = 0.08;
+const INTENSITY_OPACITY_MAX = 0.92;
+
+export function getPartyVoteShare(
+  resultados: { partido: string; votos: number }[] | undefined,
+  party: string,
+): number {
+  if (!resultados || resultados.length === 0) return 0;
+  const total = resultados.reduce((sum, row) => sum + row.votos, 0);
+  if (total <= 0) return 0;
+  const row = resultados.find(r => r.partido === party);
+  return row ? row.votos / total : 0;
+}
+
+export function getIntensityOpacity(share: number): number {
+  const clamped = Math.max(0, Math.min(1, share));
+  return INTENSITY_OPACITY_MIN + clamped * (INTENSITY_OPACITY_MAX - INTENSITY_OPACITY_MIN);
+}

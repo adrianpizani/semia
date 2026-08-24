@@ -2,10 +2,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { Layer, PathOptions } from 'leaflet';
-import { getMunicipiosGeoJSON, getCircuitosGeoJSON } from '@/lib/api';
+import { loadCircuitosGeoJSONCached, loadMunicipiosGeoJSONCached } from '@/lib/geojson-cache';
 import { DomEvent } from 'leaflet';
-import { DistritoFeature, DistritoProperties, ElectoralData } from '@/lib/types'; // Importar tipos comunes
-import { getPartyColor } from '@/lib/party-color'; // Color por partido (compartido con la leyenda)
+import { DistritoFeature, DistritoProperties, ElectoralData, MunicipioTooltipSecondaries } from '@/lib/types'; // Importar tipos comunes
+import { getIntensityOpacity, getPartyColor, getPartyVoteShare } from '@/lib/party-color';
+import { formatCompact } from '@/lib/range-utils';
 
 // Normaliza un nombre geográfico para hacer match robusto
 // (sin acentos, minúsculas, sin espacios sobrantes).
@@ -19,6 +20,33 @@ const normalizeGeoName = (name: string | null | undefined): string => {
     .trim();
 };
 
+const escapeHtml = (value: string): string =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function municipioTooltipHtml(
+  feature: DistritoFeature,
+  electoralData: ElectoralData[] | null,
+  highlightParty: string | null,
+  secondaryByGeo: MunicipioTooltipSecondaries,
+): string {
+  const name = feature.properties.nombre;
+  const lines = [`<div class="font-semibold">${escapeHtml(name)}</div>`];
+  const district = electoralData?.find(d => d.geografia_id == feature.id);
+  if (district) {
+    const party = highlightParty ?? district.ganador?.partido ?? null;
+    if (party) {
+      const pct = (getPartyVoteShare(district.resultados, party) * 100).toFixed(1).replace('.', ',');
+      const short = party.length > 32 ? `${party.slice(0, 30)}…` : party;
+      lines.push(`<div>${escapeHtml(short)} ${pct}%</div>`);
+    }
+  }
+  const extras = secondaryByGeo[Number(feature.id)] ?? [];
+  for (const extra of extras) {
+    lines.push(`<div>${escapeHtml(extra.nombre)} ${formatCompact(extra.valor)}</div>`);
+  }
+  return `<div class="font-sans text-xs leading-snug">${lines.join('')}</div>`;
+}
+
 // --- Hook Principal ---
 export const useMapView = (
   selectedMetric: number | null,
@@ -27,6 +55,8 @@ export const useMapView = (
   onCircuitoClick: (circuito: DistritoFeature) => void,
   selectedMunicipio: DistritoFeature | null,
   selectedCircuito: DistritoFeature | null,
+  highlightParty: string | null = null,
+  secondaryByGeo: MunicipioTooltipSecondaries = {},
 ) => {
   const [municipiosGeoJSON, setMunicipiosGeoJSON] = useState<FeatureCollection | null>(null);
   const [circuitosGeoJSON, setCircuitosGeoJSON] = useState<FeatureCollection | null>(null);
@@ -44,16 +74,17 @@ export const useMapView = (
     onCircuitoClickRef.current = onCircuitoClick;
   }, [onCircuitoClick]);
 
+  const tooltipCtxRef = useRef({ electoralData, highlightParty, secondaryByGeo });
+  useEffect(() => {
+    tooltipCtxRef.current = { electoralData, highlightParty, secondaryByGeo };
+  }, [electoralData, highlightParty, secondaryByGeo]);
+
   useEffect(() => {
     const loadMapData = async () => {
       try {
         setIsLoading(true);
-        const [municipiosData, circuitosData] = await Promise.all([
-          getMunicipiosGeoJSON(),
-          getCircuitosGeoJSON()
-        ]);
+        const municipiosData = await loadMunicipiosGeoJSONCached();
         setMunicipiosGeoJSON(municipiosData);
-        setCircuitosGeoJSON(circuitosData);
       } catch (error) {
         console.error("Error cargando datos geoespaciales:", error);
       } finally {
@@ -63,6 +94,16 @@ export const useMapView = (
     loadMapData();
   }, []);
 
+  const loadCircuitos = useCallback(async () => {
+    if (circuitosGeoJSON) return;
+    try {
+      const circuitosData = await loadCircuitosGeoJSONCached();
+      setCircuitosGeoJSON(circuitosData);
+    } catch (error) {
+      console.error("Error cargando circuitos electorales:", error);
+    }
+  }, [circuitosGeoJSON]);
+
   const getStyleMunicipio = useCallback((feature?: DistritoFeature): PathOptions => {
     const baseStyle: PathOptions = {
       weight: 2,
@@ -71,21 +112,43 @@ export const useMapView = (
       fillOpacity: 0.65,
       // Habilita la transición CSS de fill/fill-opacity al cambiar filtros.
       // Hover/selected usa la variante --instant para feedback inmediato.
-      className: 'walicho-municipio',
+      className: 'semia-municipio',
     };
     let fillColor = getPartyColor(null);
     if (feature && electoralData) {
       const districtData = electoralData.find(d => d.geografia_id === feature.id);
-      if (districtData && districtData.ganador) {
+      if (highlightParty) {
+        // Modo intensidad: color del partido elegido, opacidad = % de votos.
+        const share = getPartyVoteShare(districtData?.resultados, highlightParty);
+        fillColor = getPartyColor(highlightParty);
+        baseStyle.fillOpacity = getIntensityOpacity(share);
+      } else if (districtData && districtData.ganador) {
         fillColor = getPartyColor(districtData.ganador.partido);
       }
     }
     baseStyle.fillColor = fillColor;
-    if (feature && feature.id === hoveredId) {
-      return { ...baseStyle, weight: 4, color: '#333', fillOpacity: 0.8, className: 'walicho-municipio walicho-municipio--instant' };
+    const isSelected = !!(feature && selectedMunicipio && feature.id == selectedMunicipio.id);
+    const isHovered = !!(feature && feature.id === hoveredId);
+    if (isSelected) {
+      return {
+        ...baseStyle,
+        weight: 4,
+        color: '#22d3ee',
+        fillOpacity: Math.min(1, (baseStyle.fillOpacity ?? 0.65) + 0.08),
+        className: 'semia-municipio semia-municipio--instant',
+      };
+    }
+    if (isHovered) {
+      return {
+        ...baseStyle,
+        weight: 4,
+        color: '#333',
+        fillOpacity: Math.min(1, (baseStyle.fillOpacity ?? 0.65) + 0.12),
+        className: 'semia-municipio semia-municipio--instant',
+      };
     }
     return baseStyle;
-  }, [hoveredId, electoralData]);
+  }, [hoveredId, electoralData, highlightParty, selectedMunicipio]);
 
   const styleCircuito = useCallback((feature?: DistritoFeature): PathOptions => {
     const circuitParentId = feature?.properties?.parent_id;
@@ -152,27 +215,25 @@ export const useMapView = (
   const onEachFeatureMunicipio = useCallback((feature: DistritoFeature, layer: Layer) => {
     layer.bindTooltip(feature.properties.nombre, { sticky: true, className: 'custom-tooltip' });
     layer.on({
-      mouseover: () => setHoveredId(feature.id != null ? feature.id : null),
+      mouseover: () => {
+        const ctx = tooltipCtxRef.current;
+        layer.setTooltipContent(municipioTooltipHtml(
+          feature,
+          ctx.electoralData,
+          ctx.highlightParty,
+          ctx.secondaryByGeo,
+        ));
+        setHoveredId(feature.id != null ? feature.id : null);
+      },
       mouseout: () => setHoveredId(null),
       click: (e) => {
-        console.log("[DEBUG][hook] Se ejecuta el click del MUNICIPIO:", feature?.properties?.nombre, "| id:", feature?.id);
         if (e && e.originalEvent) {
           DomEvent.stopPropagation(e.originalEvent);
         }
         onMunicipioClickRef.current(feature);
-        if (electoralData) {
-          const districtData = electoralData.find(d => d.geografia_id === feature.id);
-          if (districtData) {
-            const resultsHtml = districtData.resultados
-              .map(r => `<li><strong>${r.partido}:</strong> ${r.votos.toLocaleString('es-AR')} votos</li>`)
-              .join('');
-            const popupContent = `<div class="font-sans"><h3 class="font-bold text-lg mb-2">${districtData.nombre}</h3><ul class="list-disc pl-5">${resultsHtml}</ul></div>`;
-            layer.bindPopup(popupContent).openPopup();
-          }
-        }
       },
     });
-  }, [electoralData]);
+  }, []);
 
   // --- NUEVA LOGICA PARA CIRCUITOS ---
   const onEachFeatureCircuito = useCallback((feature: DistritoFeature, layer: Layer) => {
@@ -225,5 +286,6 @@ export const useMapView = (
     styleCircuito,
     onEachFeatureMunicipio,
     onEachFeatureCircuito,
+    loadCircuitos,
   };
 };

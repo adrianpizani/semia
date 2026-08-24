@@ -1,4 +1,4 @@
-# WALICHO
+# Semia
 
 Dashboard de análisis político sobre la Provincia de Buenos Aires. Carga datos electorales, socioeconómicos y de PBG, los cruza sobre un mapa interactivo (municipios y circuitos) y permite filtrar por partido, año, tipo de voto y rangos numéricos.
 
@@ -10,6 +10,7 @@ Otra documentación:
 |---------|----------|
 | [`AVANCE.md`](./AVANCE.md) | Bitácora, bugs, decisiones y roadmap |
 | [`DEPLOY.md`](./DEPLOY.md) | Plan y runbook del deploy en AWS |
+| [`ANALISIS.md`](./ANALISIS.md) | Vista `/analisis` (tabla + cruce; SQL visual queda para después) |
 
 ---
 
@@ -45,7 +46,7 @@ docker compose exec -e PYTHONPATH=/ backend python -m app.scripts.import_circuit
 docker compose exec -e PYTHONPATH=/ backend python -m app.scripts.create_admin
 ```
 
-Login: `admin@walicho.com` / `admin123` (cambiables con `ADMIN_EMAIL` / `ADMIN_PASSWORD` en `.env`).
+Login: `admin@semia.studio` / `admin123` (cambiables con `ADMIN_EMAIL` / `ADMIN_PASSWORD` en `.env`).
 
 Si el volumen de Postgres es viejo (tablas creadas con `create_all`, sin Alembic):
 
@@ -68,7 +69,7 @@ npm run dev    # http://localhost:3000
 ## Qué hay en el repo
 
 ```
-walicho/
+semia/
 ├── README.md                 # Esta guía
 ├── AVANCE.md                 # Bitácora y roadmap
 ├── DEPLOY.md                 # Deploy AWS
