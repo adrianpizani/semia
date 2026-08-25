@@ -199,15 +199,58 @@ El entrypoint vuelve a correr `alembic upgrade head` (no-op si no hay revisiones
 
 ## 9. Después del primer deploy: CI/CD
 
-Cuando el ciclo de arriba esté estable:
+1. **CI en PRs** (`.github/workflows/ci.yml`): build frontend + import sanity backend. ✅
+2. **ECR** en `sa-east-1`: repos privados `semia-backend` y `semia-frontend`. ✅
+3. **OIDC** GitHub → AWS (sin access keys). Role con ECR + SSM. ⏳
+4. **Deploy en push a `main`**: build en GitHub → push ECR → en EC2 `pull` + `up` vía SSM. ⏳
+5. Branch protection en `main`: exigir que CI pase. ⏳
 
-1. **CI en PRs** (`.github/workflows/ci.yml`): build frontend (`npm run build`); compile + import sanity del backend. ✅ en el repo.
-2. **ECR** en `sa-east-1`: `semia-backend`, `semia-frontend`.
-3. **OIDC** GitHub → AWS (sin access keys). Role con ECR + SSM.
-4. **Deploy en push a `main`**: build en GitHub (no en el t3.micro), push a ECR, `docker compose pull` + `up` en el EC2 vía SSM.
-5. Branch protection en `main`: exigir que CI pase.
+### 9.1 Compose + ECR
 
-Deploy automático todavía no está. El primer deploy fue a mano a propósito.
+`docker-compose.prod.yml` declara `image: ${ECR_REGISTRY}/semia-…:${IMAGE_TAG}` y también `build:` (para generar la imagen).
+
+En el `.env` del EC2 (y en tu máquina al pushear):
+
+```bash
+ECR_REGISTRY=590451609284.dkr.ecr.sa-east-1.amazonaws.com
+IMAGE_TAG=latest
+```
+
+(Sustituí el Account ID si el tuyo es otro.)
+
+### 9.2 Build + push manual (desde tu PC, una vez / hasta tener CD)
+
+```bash
+cd ~/Proyectos/semia
+export AWS_REGION=sa-east-1
+export ECR_REGISTRY=<tu-cuenta>.dkr.ecr.sa-east-1.amazonaws.com
+export IMAGE_TAG=latest   # o el SHA: git rev-parse --short HEAD
+
+aws ecr get-login-password --region "$AWS_REGION" \
+  | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+# Build (usa docker-compose.prod.yml → tagea con ECR_REGISTRY)
+docker compose -f docker-compose.prod.yml build backend frontend
+
+docker push "$ECR_REGISTRY/semia-backend:$IMAGE_TAG"
+docker push "$ECR_REGISTRY/semia-frontend:$IMAGE_TAG"
+```
+
+### 9.3 Pull en el EC2 (sin buildear ahí)
+
+```bash
+cd ~/semia
+# Agregá ECR_REGISTRY e IMAGE_TAG al .env si faltan
+aws ecr get-login-password --region sa-east-1 \
+  | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+git pull   # para traer el compose actualizado
+docker compose -f docker-compose.prod.yml --env-file .env pull backend frontend
+docker compose -f docker-compose.prod.yml --env-file .env up -d
+```
+
+La EC2 necesita poder autenticarse a ECR: con el rol `semia-ec2` conviene agregar la policy  
+`AmazonEC2ContainerRegistryReadOnly` al rol (solo pull). Mientras tanto, login con el user IAM desde el server también funciona si configurás `aws configure` ahí (menos ideal).
 
 ---
 

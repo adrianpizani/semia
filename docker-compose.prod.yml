@@ -7,12 +7,19 @@
 #   - restart: always + healthchecks.
 #   - Nginx expone 80/443 al host; frontend/backend quedan en red interna.
 #   - Volumen postgres_data con nombre (sobrevive a `docker compose down`).
+#   - backend/frontend: imagen ECR (+ build opcional para generar/push).
 #
-# Levantar:
-#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
-# (--env-file es opcional si exportás las vars en el shell antes).
+# Flujo CI/CD (recomendado):
+#   En GitHub/PC: build + push a ECR (ver DEPLOY.md §9).
+#   En EC2:
+#     docker compose -f docker-compose.prod.yml --env-file .env pull
+#     docker compose -f docker-compose.prod.yml --env-file .env up -d
 #
-# Pre-requisito: tener un .env completo en la raíz (ver .env.example).
+# Build local (sin CI aún):
+#   docker compose -f docker-compose.prod.yml --env-file .env build
+#   # luego tag + push a ECR (DEPLOY.md)
+#
+# Pre-requisito: .env completo (ver .env.example), con ECR_REGISTRY.
 
 services:
   db:
@@ -33,6 +40,7 @@ services:
       - semia
 
   backend:
+    image: ${ECR_REGISTRY}/semia-backend:${IMAGE_TAG:-latest}
     build: ./backend
     # Sin bind-mounts: código, alembic, GeoJSON de seed (backend/static/)
     # y el entrypoint van embebidos en la imagen. Al arrancar, el entrypoint
@@ -59,6 +67,7 @@ services:
       - semia
 
   frontend:
+    image: ${ECR_REGISTRY}/semia-frontend:${IMAGE_TAG:-latest}
     build:
       context: ./frontend
       args:
