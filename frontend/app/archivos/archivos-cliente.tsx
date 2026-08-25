@@ -122,6 +122,8 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
     descripcion: "",
     tipo_metrica: TipoMetrica.ELECTORAL, // Valor por defecto
   })
+  // Evita doble click: con CSVs grandes el POST tarda y el modal parece colgado.
+  const [isUploading, setIsUploading] = useState(false)
 
   // Polling para actualizar el estado de los archivos en procesamiento
   useEffect(() => {
@@ -149,6 +151,7 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
 
   const handleFileUpload = async (event: React.FormEvent) => {
     event.preventDefault()
+    if (isUploading) return
 
     if (!uploadForm.file) {
       toast.error("Por favor seleccione un archivo")
@@ -172,8 +175,9 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
       formData.append("descripcion", uploadForm.descripcion)
     }
 
+    setIsUploading(true)
     try {
-      toast.info("Subiendo archivo...")
+      toast.info("Subiendo archivo… no cierres ni vuelvas a hacer clic.")
       await uploadArchivo(formData)
       toast.success("Archivo recibido. El procesamiento ha comenzado en segundo plano.")
       setUploadDialogOpen(false)
@@ -184,6 +188,8 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
       router.refresh() // Re-fetch para mostrar el estado PENDIENTE/PROCESANDO
     } catch (error) {
       toast.error(`Error al subir: ${error instanceof Error ? error.message : "Error desconocido"}`)
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -270,7 +276,13 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
             <h1 className="text-2xl font-semibold">Gestión de Archivos</h1>
             <p className="text-sm text-muted-foreground">Administre y visualice sus conjuntos de datos</p>
           </div>
-          <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+          <Dialog
+            open={uploadDialogOpen}
+            onOpenChange={(open) => {
+              if (isUploading) return
+              setUploadDialogOpen(open)
+            }}
+          >
             <DialogTrigger asChild>
               <Button className="gap-2">
                 <Upload className="h-4 w-4" />
@@ -377,12 +389,17 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
                   )}
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
-                  <Button type="button" variant="outline" onClick={() => setUploadDialogOpen(false)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setUploadDialogOpen(false)}
+                    disabled={isUploading}
+                  >
                     Cancelar
                   </Button>
-                  <Button type="submit" disabled={!matchedProcessor}>
+                  <Button type="submit" disabled={!matchedProcessor || isUploading}>
                     <Upload className="mr-2 h-4 w-4" />
-                    Subir Archivo
+                    {isUploading ? "Subiendo…" : "Subir Archivo"}
                   </Button>
                 </div>
               </form>

@@ -129,16 +129,16 @@ docker compose -f docker-compose.prod.yml exec -e PYTHONPATH=/ backend python -m
 
 Antes de apuntar el DNS, nginx de prod **exige** `nginx/certs/fullchain.pem` y `privkey.pem`. Para probar en local alcanza un cert self-signed (la carpeta está en `.gitignore`).
 
-1. Cloudflare: sitio nuevo, nameservers, registro `A app.semia.studio <elastic-ip>` con proxy **gris** (DNS only) hasta que certbot valide.
+1. DonWeb DNS: registro `A` de `@` (semia.studio) → `<elastic-ip>`. Sin proxy extra hasta que certbot valide.
 2. Certbot (nginx Docker ocupa el 80: hay que pararlo un momento):
 
 ```bash
-dig app.semia.studio
+dig semia.studio
 docker compose -f docker-compose.prod.yml stop nginx
-sudo certbot certonly --standalone -d app.semia.studio
+sudo certbot certonly --standalone -d semia.studio
 sudo mkdir -p ~/semia/nginx/certs
-sudo cp /etc/letsencrypt/live/app.semia.studio/fullchain.pem ~/semia/nginx/certs/
-sudo cp /etc/letsencrypt/live/app.semia.studio/privkey.pem ~/semia/nginx/certs/
+sudo cp /etc/letsencrypt/live/semia.studio/fullchain.pem ~/semia/nginx/certs/
+sudo cp /etc/letsencrypt/live/semia.studio/privkey.pem ~/semia/nginx/certs/
 sudo chmod -R 755 ~/semia/nginx/certs
 docker compose -f docker-compose.prod.yml start nginx
 ```
@@ -146,18 +146,18 @@ docker compose -f docker-compose.prod.yml start nginx
 3. Renovación (cron):
 
 ```cron
-0 3 * * * root certbot renew --quiet && cp /etc/letsencrypt/live/app.semia.studio/fullchain.pem /home/ubuntu/semia/nginx/certs/ && cp /etc/letsencrypt/live/app.semia.studio/privkey.pem /home/ubuntu/semia/nginx/certs/ && docker compose -f /home/ubuntu/semia/docker-compose.prod.yml restart nginx
+0 3 * * * root certbot renew --quiet && cp /etc/letsencrypt/live/semia.studio/fullchain.pem /home/ubuntu/semia/nginx/certs/ && cp /etc/letsencrypt/live/semia.studio/privkey.pem /home/ubuntu/semia/nginx/certs/ && docker compose -f /home/ubuntu/semia/docker-compose.prod.yml restart nginx
 ```
 
-4. Con HTTPS andando, activar el proxy naranja de Cloudflare.
+4. Con HTTPS andando, el DNS en DonWeb ya apunta a la Elastic IP.
 
-El `server_name` en `nginx/conf.d/semia.conf` es `app.semia.studio`.
+El `server_name` en `nginx/conf.d/semia.conf` es `semia.studio`.
 
 ---
 
 ## 6. Verificar
 
-- `https://app.semia.studio` → `/login`
+- `https://semia.studio` → `/login`
 - Login con el admin del `.env`
 - Subir un CSV chico y ver el mapa
 
@@ -201,13 +201,13 @@ El entrypoint vuelve a correr `alembic upgrade head` (no-op si no hay revisiones
 
 Cuando el ciclo de arriba esté estable:
 
-1. **CI en PRs** (`.github/workflows/ci.yml`): lint/build frontend; sanity import del backend. Tests cuando existan (`pytest` / `npm test`).
+1. **CI en PRs** (`.github/workflows/ci.yml`): build frontend (`npm run build`); compile + import sanity del backend. ✅ en el repo.
 2. **ECR** en `sa-east-1`: `semia-backend`, `semia-frontend`.
 3. **OIDC** GitHub → AWS (sin access keys). Role con ECR + SSM.
 4. **Deploy en push a `main`**: build en GitHub (no en el t3.micro), push a ECR, `docker compose pull` + `up` en el EC2 vía SSM.
 5. Branch protection en `main`: exigir que CI pase.
 
-No hay workflows en el repo todavía. El primer deploy es a mano a propósito.
+Deploy automático todavía no está. El primer deploy fue a mano a propósito.
 
 ---
 
