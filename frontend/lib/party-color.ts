@@ -45,10 +45,52 @@ export function getPartiesColorMap(parties: string[]): Record<string, string> {
   return map;
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.replace("#", "");
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// Tinte suave del color del partido (p. ej. filas de tabla en modo ganador por distrito).
+export function getPartyRowTint(
+  partyName: string | null | undefined,
+  alpha = 0.12,
+): string | undefined {
+  if (!partyName) return undefined;
+  const color = getPartyColor(partyName);
+  if (color.startsWith("#")) return hexToRgba(color, alpha);
+  if (color.startsWith("hsl(")) {
+    return color.replace(/^hsl\(/, "hsla(").replace(/\)$/, `, ${alpha})`);
+  }
+  return color;
+}
+
 // Opacidad del mapa en modo "intensidad": 0% de votos = casi transparente,
 // 100% = saturado. Compartida con la leyenda para que coincida con el mapa.
 const INTENSITY_OPACITY_MIN = 0.08;
 const INTENSITY_OPACITY_MAX = 0.92;
+
+// Misma curva que el mapa, pero con techo bajo para fondos de fila legibles.
+const ROW_INTENSITY_ALPHA_MIN = 0.05;
+const ROW_INTENSITY_ALPHA_MAX = 0.3;
+
+export function getPartyIntensityRowTint(
+  partyName: string | null | undefined,
+  sharePercent: number | null | undefined,
+  boost = 0,
+): string | undefined {
+  if (!partyName || sharePercent == null) return undefined;
+  const share = Math.max(0, Math.min(1, sharePercent / 100));
+  const mapOpacity = getIntensityOpacity(share);
+  const t = (mapOpacity - INTENSITY_OPACITY_MIN) / (INTENSITY_OPACITY_MAX - INTENSITY_OPACITY_MIN);
+  const alpha = Math.min(
+    ROW_INTENSITY_ALPHA_MAX + boost,
+    ROW_INTENSITY_ALPHA_MIN + t * (ROW_INTENSITY_ALPHA_MAX - ROW_INTENSITY_ALPHA_MIN) + boost,
+  );
+  return getPartyRowTint(partyName, alpha);
+}
 
 export function getPartyVoteShare(
   resultados: { partido: string; votos: number }[] | undefined,

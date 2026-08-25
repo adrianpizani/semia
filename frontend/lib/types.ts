@@ -29,6 +29,7 @@ export interface Metrica {
   nombre_amigable: string;
   is_active: boolean;
   tipo: TipoMetricaEnum;
+  escala_rango?: 'log' | 'linear' | null;
   archivo?: {
     id: number;
     nombre_visible: string;

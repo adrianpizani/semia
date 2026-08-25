@@ -1,13 +1,26 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo, SetStateAction } from "react"
+import { usePathname } from "next/navigation"
 import { getMetricas, getElectoralData, getGenericMetricData, getMetricOpciones } from "@/lib/api"
 import { decideScale } from "@/lib/range-utils"
 import { Metrica, TipoMetricaEnum, GenericData, AnyFiltro, FiltroCategorico, ElectoralData } from "@/lib/types"
 import { loadDashboardView, saveDashboardView } from "@/lib/dashboard-view"
 
+function partiesFromElectoralData(data: ElectoralData[] | null): string[] {
+  if (!data?.length) return []
+  const parties = new Set<string>()
+  for (const district of data) {
+    for (const row of district.resultados) {
+      parties.add(row.partido)
+    }
+  }
+  return Array.from(parties).sort()
+}
+
 // Receta compartida entre dashboard y /analisis: métricas, filtros y datos.
 export function useDashboardView() {
+  const pathname = usePathname()
   const [activeMetrics, setActiveMetrics] = useState<Metrica[]>([])
   const [selectedPrimaryMetric, setSelectedPrimaryMetric] = useState<number | null>(null)
   const [selectedSecondaryMetrics, setSelectedSecondaryMetrics] = useState<number[]>([])
@@ -15,7 +28,6 @@ export function useDashboardView() {
   const [electoralData, setElectoralData] = useState<ElectoralData[] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [secondaryMetricsData, setSecondaryMetricsData] = useState<{ [metricId: number]: GenericData[] }>({})
-  const [availableParties, setAvailableParties] = useState<string[]>([])
   const [availableYears, setAvailableYears] = useState<string[]>([])
   const [availableVoteTypes, setAvailableVoteTypes] = useState<string[]>([])
   const [metricRanges, setMetricRanges] = useState<{ [metricId: number]: { min: number; max: number; scale: "log" | "linear" } }>({})
@@ -39,10 +51,13 @@ export function useDashboardView() {
 
   useEffect(() => {
     if (!viewReady || activeMetrics.length === 0) return
-    const ids = new Set(activeMetrics.map(m => m.id))
-    if (selectedPrimaryMetric !== null && !ids.has(selectedPrimaryMetric)) {
-      setSelectedPrimaryMetric(null)
+    if (selectedPrimaryMetric !== null) {
+      const primary = activeMetrics.find(m => m.id === selectedPrimaryMetric)
+      if (!primary || primary.tipo !== TipoMetricaEnum.ELECTORAL) {
+        setSelectedPrimaryMetric(null)
+      }
     }
+    const ids = new Set(activeMetrics.map(m => m.id))
     setSelectedSecondaryMetrics(prev => {
       const next = prev.filter(id => ids.has(id))
       return next.length === prev.length ? prev : next
@@ -59,11 +74,7 @@ export function useDashboardView() {
       }
     }
     fetchMetrics()
-  }, [])
-
-  useEffect(() => {
-    setAvailableParties([])
-  }, [selectedPrimaryMetric])
+  }, [pathname])
 
   useEffect(() => {
     let cancelled = false
@@ -106,7 +117,25 @@ export function useDashboardView() {
     return partyFilter?.valores[0] ?? null
   }, [filters, selectedPrimaryMetric])
 
+  const availableParties = useMemo(
+    () => partiesFromElectoralData(electoralData),
+    [electoralData],
+  )
+
+  // Si el año/tipo cambia y el partido elegido no existe en el recorte, volver a "Ganador por distrito".
   useEffect(() => {
+    if (!viewReady || selectedPrimaryMetric === null || !selectedParty) return
+    if (isLoading || !electoralData) return
+    if (availableParties.includes(selectedParty)) return
+    setFilters(prev => prev.filter(f =>
+      !(f.tipo === "categoria"
+        && f.dimension === "agrupacion_nombre"
+        && f.metrica_id === selectedPrimaryMetric)
+    ))
+  }, [viewReady, selectedPrimaryMetric, selectedParty, availableParties, electoralData, isLoading])
+
+  useEffect(() => {
+    let cancelled = false
     const fetchElectoral = async () => {
       if (!viewReady) return
       if (selectedPrimaryMetric === null) {
@@ -114,32 +143,31 @@ export function useDashboardView() {
         return
       }
       const metricInfo = activeMetrics.find(m => m.id === selectedPrimaryMetric)
-      if (metricInfo?.tipo === TipoMetricaEnum.ELECTORAL) {
-        setIsLoading(true)
-        try {
-          const queryFilters: AnyFiltro[] = JSON.parse(electoralQueryKey)
-          const data = await getElectoralData(selectedPrimaryMetric, queryFilters)
+      if (metricInfo?.tipo !== TipoMetricaEnum.ELECTORAL) {
+        setElectoralData(null)
+        return
+      }
+      setElectoralData(null)
+      setIsLoading(true)
+      try {
+        const queryFilters: AnyFiltro[] = JSON.parse(electoralQueryKey)
+        const data = await getElectoralData(selectedPrimaryMetric, queryFilters)
+        if (!cancelled) {
           setElectoralData(data)
-          if (data && data.length > 0) {
-            setAvailableParties(prevParties => {
-              const partiesSet = new Set(prevParties)
-              data.forEach((d: ElectoralData) => {
-                d.resultados.forEach(r => partiesSet.add(r.partido))
-              })
-              return Array.from(partiesSet).sort()
-            })
-          }
-        } catch (error) {
+        }
+      } catch (error) {
+        if (!cancelled) {
           console.error("Error fetching electoral data:", error)
           setElectoralData(null)
-        } finally {
+        }
+      } finally {
+        if (!cancelled) {
           setIsLoading(false)
         }
-      } else {
-        setElectoralData(null)
       }
     }
     fetchElectoral()
+    return () => { cancelled = true }
   }, [viewReady, selectedPrimaryMetric, electoralQueryKey, activeMetrics])
 
   useEffect(() => {

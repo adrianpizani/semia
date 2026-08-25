@@ -6,6 +6,7 @@ import { Metrica } from "@/lib/types"
 import { formatCompact } from "@/lib/range-utils"
 import { formatRank } from "@/lib/ranking"
 import { AnalisisRow, AnalisisSortDir, AnalisisSortKey } from "@/lib/analisis-rows"
+import { getPartyIntensityRowTint, getPartyRowTint } from "@/lib/party-color"
 
 interface AnalisisTableProps {
   rows: AnalisisRow[]
@@ -113,11 +114,17 @@ export function AnalisisTable({
               </tr>
             ) : rows.map(row => {
               const selected = row.geografia_id === selectedGeografiaId
+              const rowTint = !selectedParty && row.ganador
+                ? getPartyRowTint(row.ganador, selected ? 0.2 : 0.12)
+                : selectedParty
+                  ? getPartyIntensityRowTint(selectedParty, row.share, selected ? 0.06 : 0)
+                  : undefined
               return (
                 <tr
                   key={row.geografia_id}
                   onClick={() => onRowClick(row.geografia_id, row.nombre)}
-                  className={`cursor-pointer border-b border-border/60 hover:bg-muted/50 ${selected ? "bg-cyan-50" : ""}`}
+                  style={rowTint ? { backgroundColor: rowTint } : undefined}
+                  className={`cursor-pointer border-b border-border/60 ${selected ? "ring-1 ring-inset ring-foreground/15" : ""} ${!rowTint ? "hover:bg-muted/50" : ""}`}
                 >
                   <td className="px-3 py-2 font-medium">{row.nombre}</td>
                   <td className="px-3 py-2">

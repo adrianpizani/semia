@@ -36,6 +36,29 @@ async def toggle_metric(
         raise HTTPException(status_code=404, detail="Metrica no encontrada")
     return metric
 
+
+@router.patch("/{metric_id}/escala-rango", response_model=schemas.Metrica)
+async def update_metric_scale(
+    metric_id: int,
+    body: schemas.MetricaEscalaUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin = Depends(require_admin),
+):
+    """
+    Configura la escala del slider de rango (log / lineal / automática).
+    Solo aplica a métricas numéricas (económicas o demográficas).
+    """
+    metric = await metrica_service.update_metric_scale(db, metric_id, body.escala_rango)
+    if not metric:
+        db_metric = await db.get(MetricasModel, metric_id)
+        if not db_metric:
+            raise HTTPException(status_code=404, detail="Metrica no encontrada")
+        raise HTTPException(
+            status_code=400,
+            detail="La escala de rango solo aplica a métricas económicas o demográficas.",
+        )
+    return metric
+
 @router.post("/{metric_id}/data", response_model=List[schemas.GeoDataElectoral])
 async def get_electoral_data(
     metric_id: int, 
