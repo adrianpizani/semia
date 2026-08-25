@@ -236,21 +236,115 @@ docker push "$ECR_REGISTRY/semia-backend:$IMAGE_TAG"
 docker push "$ECR_REGISTRY/semia-frontend:$IMAGE_TAG"
 ```
 
-### 9.3 Pull en el EC2 (sin buildear ahí)
+### 9.4 OIDC GitHub → AWS (sin Access Keys)
 
-```bash
-cd ~/semia
-# Agregá ECR_REGISTRY e IMAGE_TAG al .env si faltan
-aws ecr get-login-password --region sa-east-1 \
-  | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+#### A) Proveedor de identidad (una vez por cuenta)
 
-git pull   # para traer el compose actualizado
-docker compose -f docker-compose.prod.yml --env-file .env pull backend frontend
-docker compose -f docker-compose.prod.yml --env-file .env up -d
+1. IAM → **Proveedores de identidad** → **Agregar proveedor**
+2. Tipo: **OpenID Connect**
+3. URL del proveedor: `https://token.actions.githubusercontent.com`
+4. Audiencia: `sts.amazonaws.com`
+5. **Agregar proveedor**
+
+#### B) Rol para Actions: `semia-github-deploy`
+
+1. IAM → **Roles** → **Crear rol**
+2. Tipo: **Federación de identidades web** / **Web identity**
+3. Proveedor: `token.actions.githubusercontent.com`
+4. Audiencia: `sts.amazonaws.com`
+5. Next → por ahora **sin** policies managed (las agregamos en línea)
+6. Nombre: **`semia-github-deploy`** → Crear
+
+Luego editá la **relación de confianza** del rol (Trust relationships) y dejala así  
+(ajustá `ACCOUNT_ID` y el repo si hace falta):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:adrianpizani/semia:*"
+        }
+      }
+    }
+  ]
+}
 ```
 
-La EC2 necesita poder autenticarse a ECR: con el rol `semia-ec2` conviene agregar la policy  
-`AmazonEC2ContainerRegistryReadOnly` al rol (solo pull). Mientras tanto, login con el user IAM desde el server también funciona si configurás `aws configure` ahí (menos ideal).
+#### C) Permisos del rol (política en línea `semia-github-deploy-policy`)
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrAuth",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "EcrPush",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:PutImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:DescribeRepositories"
+      ],
+      "Resource": [
+        "arn:aws:ecr:sa-east-1:ACCOUNT_ID:repository/semia-backend",
+        "arn:aws:ecr:sa-east-1:ACCOUNT_ID:repository/semia-frontend"
+      ]
+    },
+    {
+      "Sid": "SsmDeploy",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:SendCommand",
+        "ssm:GetCommandInvocation",
+        "ssm:ListCommandInvocations"
+      ],
+      "Resource": [
+        "arn:aws:ec2:sa-east-1:ACCOUNT_ID:instance/INSTANCE_ID",
+        "arn:aws:ssm:sa-east-1::document/AWS-RunShellScript",
+        "arn:aws:ssm:sa-east-1:ACCOUNT_ID:*"
+      ]
+    }
+  ]
+}
+```
+
+Reemplazá `ACCOUNT_ID` e `INSTANCE_ID` (`i-…` de la EC2).
+
+#### D) Secrets en GitHub
+
+Repo → **Settings** → **Secrets and variables** → **Actions** → New:
+
+| Secret | Valor |
+|--------|--------|
+| `AWS_DEPLOY_ROLE_ARN` | ARN del rol `semia-github-deploy` (ej. `arn:aws:iam::…:role/semia-github-deploy`) |
+| `EC2_INSTANCE_ID` | `i-0abc…` de `semia-prod` |
+
+#### E) Workflow
+
+`.github/workflows/deploy.yml` — en cada push a `main`: build → push ECR → SSM `pull` + `up` en el EC2.
+
+La primera vez conviene dispararlo a mano: Actions → **Deploy** → **Run workflow**.
 
 ---
 
