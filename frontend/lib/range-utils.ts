@@ -20,6 +20,17 @@ export function decideScale(values: number[]): RangeScale {
   return max / min >= LOG_RATIO_THRESHOLD ? 'log' : 'linear';
 }
 
+// Escala efectiva: preferencia de la métrica (gestión) o detección automática.
+export function resolveRangeScale(
+  configured: 'log' | 'linear' | null | undefined,
+  detected: RangeScale,
+  min: number,
+): RangeScale {
+  if (configured === 'linear') return 'linear';
+  if (configured === 'log') return min > 0 ? 'log' : 'linear';
+  return detected;
+}
+
 // Convierte un valor a su posición normalizada (0..1) dentro del rango, con escala.
 export function toNormPosition(min: number, max: number, value: number, scale: RangeScale): number {
   if (scale === 'log' && min > 0) {

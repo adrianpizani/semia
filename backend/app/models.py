@@ -74,6 +74,8 @@ class Metricas(Base):
     nombre_amigable = Column(String)
     tipo = Column(Enum(TipoMetrica), nullable=False, default=TipoMetrica.ELECTORAL) # Nuevo campo
     is_active = Column(Boolean, default=False, nullable=False)
+    # 'log' | 'linear' | NULL (automática según dispersión de la muestra)
+    escala_rango = Column(String, nullable=True)
     archivo_id = Column(Integer, ForeignKey("archivos.id"), nullable=True)
     
     hechos = relationship("Hechos_Datos", back_populates="metrica")

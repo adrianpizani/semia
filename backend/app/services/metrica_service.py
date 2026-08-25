@@ -56,17 +56,7 @@ async def get_all_metrics(db: AsyncSession) -> list[schemas.Metrica]:
     result = await db.execute(query)
     db_metrics = result.scalars().unique().all()
 
-    metrics_schemas = []
-    for db_metric in db_metrics:
-        archivo_schema = schemas.ArchivoForMetrica.from_orm(db_metric.archivo) if db_metric.archivo else None
-        metrics_schemas.append(schemas.Metrica(
-            id=db_metric.id,
-            nombre_amigable=db_metric.nombre_amigable,
-            is_active=db_metric.is_active,
-            tipo=TipoMetrica(db_metric.tipo),
-            archivo=archivo_schema
-        ))
-    return metrics_schemas
+    return [schemas.Metrica.model_validate(db_metric) for db_metric in db_metrics]
 
 async def toggle_metric_status(db: AsyncSession, metric_id: int) -> schemas.Metrica | None:
     """
@@ -82,9 +72,29 @@ async def toggle_metric_status(db: AsyncSession, metric_id: int) -> schemas.Metr
         await db.commit()
         await db.refresh(metric)
 
-        return schemas.Metrica.from_orm(metric)
+        return schemas.Metrica.model_validate(metric)
     
     return None
+
+
+async def update_metric_scale(
+    db: AsyncSession,
+    metric_id: int,
+    escala_rango: str | None,
+) -> schemas.Metrica | None:
+    result = await db.execute(
+        select(Metricas).options(selectinload(Metricas.archivo)).where(Metricas.id == metric_id)
+    )
+    metric = result.scalars().first()
+    if not metric:
+        return None
+    if metric.tipo not in (TipoMetrica.ECONOMICA, TipoMetrica.DEMOGRAFICA):
+        return None
+    metric.escala_rango = escala_rango
+    await db.commit()
+    await db.refresh(metric)
+    return schemas.Metrica.model_validate(metric)
+
 
 async def get_electoral_metric_data(db: AsyncSession, metric_id: int, filtros: Optional[List[schemas.AnyFiltro]] = None):
     """

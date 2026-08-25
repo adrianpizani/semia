@@ -129,6 +129,7 @@ export const toggleMetrica = async (metricId: number) => {
   try {
     const response = await fetch(`${API_BASE_URL}/metricas/${metricId}/toggle`, {
       method: 'POST',
+      credentials: 'include',
     });
     if (!response.ok) {
       const errorData = await response.json();
@@ -139,6 +140,23 @@ export const toggleMetrica = async (metricId: number) => {
     console.error('Error toggling metric:', error);
     throw error;
   }
+};
+
+export const updateMetricaEscala = async (
+  metricId: number,
+  escala_rango: 'log' | 'linear' | null,
+) => {
+  const response = await fetch(`${API_BASE_URL}/metricas/${metricId}/escala-rango`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ escala_rango }),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to update metric scale');
+  }
+  return await response.json();
 };
 
 export const deleteArchivo = async (archivoId: number) => {

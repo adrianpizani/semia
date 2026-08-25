@@ -3,18 +3,12 @@
 import { useState } from "react"
 import { toast } from "sonner"
 import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge, BadgeProps } from "@/components/ui/badge"
-import { toggleMetrica } from "@/lib/api"
-
-// --- Tipos de Datos ---
-enum TipoMetrica {
-  ELECTORAL = "ELECTORAL",
-  DEMOGRAFICA = "DEMOGRAFICA",
-  GEOGRAFICA = "GEOGRAFICA",
-  TEMPORAL = "TEMPORAL",
-}
+import { toggleMetrica, updateMetricaEscala } from "@/lib/api"
+import { TipoMetricaEnum } from "@/lib/types"
 
 interface ArchivoForMetrica {
   id: number;
@@ -25,7 +19,8 @@ interface MetricaItem {
   id: number;
   nombre_amigable: string;
   is_active: boolean;
-  tipo: TipoMetrica;
+  tipo: TipoMetricaEnum;
+  escala_rango?: 'log' | 'linear' | null;
   archivo: ArchivoForMetrica | null;
 }
 
@@ -33,27 +28,28 @@ interface MetricasClienteProps {
   initialMetricas: MetricaItem[];
 }
 
-// --- Componente para Badge de Tipo de Métrica ---
-const TipoMetricaBadge: React.FC<{ tipo: TipoMetrica }> = ({ tipo }) => {
-  const typeStyles: { [key in TipoMetrica]: { variant: BadgeProps['variant']; text: string } } = {
-    [TipoMetrica.ELECTORAL]: { variant: "default", text: "Electoral" },
-    [TipoMetrica.DEMOGRAFICA]: { variant: "secondary", text: "Demográfica" },
-    [TipoMetrica.GEOGRAFICA]: { variant: "outline", text: "Geográfica" },
-    [TipoMetrica.TEMPORAL]: { variant: "secondary", text: "Temporal" },
+const TipoMetricaBadge: React.FC<{ tipo: TipoMetricaEnum }> = ({ tipo }) => {
+  const typeStyles: Partial<Record<TipoMetricaEnum, { variant: BadgeProps['variant']; text: string }>> = {
+    [TipoMetricaEnum.ELECTORAL]: { variant: "default", text: "Electoral" },
+    [TipoMetricaEnum.DEMOGRAFICA]: { variant: "secondary", text: "Demográfica" },
+    [TipoMetricaEnum.GEOGRAFICA]: { variant: "outline", text: "Geográfica" },
+    [TipoMetricaEnum.TEMPORAL]: { variant: "secondary", text: "Temporal" },
+    [TipoMetricaEnum.ECONOMICA]: { variant: "secondary", text: "Económica" },
   };
 
-  const style = typeStyles[tipo] || { variant: "default", text: tipo };
+  const style = typeStyles[tipo] ?? { variant: "default" as const, text: tipo };
 
   return <Badge variant={style.variant}>{style.text}</Badge>;
 };
 
+function hasRangeScale(tipo: TipoMetricaEnum): boolean {
+  return tipo === TipoMetricaEnum.ECONOMICA || tipo === TipoMetricaEnum.DEMOGRAFICA;
+}
 
-// --- Componente Principal ---
 export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
   const [metricas, setMetricas] = useState<MetricaItem[]>(initialMetricas);
 
   const handleToggle = async (metricId: number) => {
-    // Actualización optimista de la UI
     setMetricas(currentMetricas =>
       currentMetricas.map(m =>
         m.id === metricId ? { ...m, is_active: !m.is_active } : m
@@ -61,12 +57,10 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
     );
 
     try {
-      // Llamada a la API
       await toggleMetrica(metricId);
       toast.success("Estado de la métrica actualizado");
     } catch (error) {
       toast.error("Error al actualizar la métrica");
-      // Revertir el cambio si la API falla
       setMetricas(currentMetricas =>
         currentMetricas.map(m =>
           m.id === metricId ? { ...m, is_active: !m.is_active } : m
@@ -75,17 +69,34 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
     }
   };
 
+  const handleEscalaChange = async (metricId: number, value: string) => {
+    const escala_rango = value === "auto" ? null : value as 'log' | 'linear';
+    const previous = metricas.find(m => m.id === metricId)?.escala_rango ?? null;
+
+    setMetricas(current =>
+      current.map(m => m.id === metricId ? { ...m, escala_rango } : m)
+    );
+
+    try {
+      await updateMetricaEscala(metricId, escala_rango);
+      toast.success("Escala de filtro actualizada");
+    } catch (error) {
+      toast.error("Error al actualizar la escala");
+      setMetricas(current =>
+        current.map(m => m.id === metricId ? { ...m, escala_rango: previous } : m)
+      );
+    }
+  };
+
   return (
     <div className="flex h-screen flex-col">
-      {/* Header */}
       <div className="border-b border-border bg-card px-6 py-4">
         <h1 className="text-2xl font-semibold">Gestión de Métricas</h1>
         <p className="text-sm text-muted-foreground">
-          Active o desactive las métricas que desea visualizar en el mapa electoral.
+          Activá métricas para el mapa y configurá la escala del slider de filtro (lineal o logarítmica).
         </p>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-auto p-6">
         <div className="mx-auto max-w-7xl">
           <Card>
@@ -96,16 +107,17 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[50%]">Métrica</TableHead>
+                    <TableHead className="w-[35%]">Métrica</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Archivo de Origen</TableHead>
+                    <TableHead>Escala de filtro</TableHead>
                     <TableHead className="text-right">Activa</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {metricas.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                         No se encontraron métricas. Sube un archivo para generarlas.
                       </TableCell>
                     </TableRow>
@@ -121,6 +133,25 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
                             <Badge variant="outline">{metrica.archivo.nombre_visible}</Badge>
                           ) : (
                             <Badge variant="secondary">N/A</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {hasRangeScale(metrica.tipo) ? (
+                            <Select
+                              value={metrica.escala_rango ?? "auto"}
+                              onValueChange={(value) => handleEscalaChange(metrica.id, value)}
+                            >
+                              <SelectTrigger className="w-[150px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="auto">Automática</SelectItem>
+                                <SelectItem value="linear">Lineal</SelectItem>
+                                <SelectItem value="log">Logarítmica</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
                           )}
                         </TableCell>
                         <TableCell className="text-right">

@@ -9,9 +9,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
 import Link from "next/link"
-import { ReactNode, useState, useEffect, useMemo, useCallback, useRef, SetStateAction } from "react"
+import { ReactNode, useState, useEffect, useMemo, useCallback, SetStateAction } from "react"
 import { Metrica, TipoMetricaEnum, AnyFiltro, FiltroCategorico, FiltroRango } from "@/lib/types"
-import { formatCompact, fromNormPosition, toNormPosition, RangeScale } from "@/lib/range-utils"
+import { formatCompact, fromNormPosition, toNormPosition, RangeScale, resolveRangeScale } from "@/lib/range-utils"
+import { cn } from "@/lib/utils"
 
 // --- Etiquetas legibles por dimensión (para los badges de filtros activos) ---
 const DIMENSION_LABELS: { [k: string]: string } = {
@@ -100,7 +101,7 @@ const ElectoralFilter = ({
 };
 
 // --- Sub-componente para Filtro de Rango (métricas económicas: PBG, etc.) ---
-// Data-driven: usa la escala detectada desde la muestra (log si hay mucha dispersión).
+// Data-driven: usa la escala configurada en gestión de métricas o la detectada automáticamente.
 // Desacoplado: el rango base (min/max/escala) es fijo (data sin filtrar) y la selección
 // del usuario (ventana en valores absolutos) se mantiene al aplicar el filtro, sin reset.
 const RangeFilter = ({ metric, range, initialWin, onFilterChange, resetSignal }: {
@@ -108,38 +109,33 @@ const RangeFilter = ({ metric, range, initialWin, onFilterChange, resetSignal }:
   range?: { min: number; max: number; scale: RangeScale };
   initialWin?: [number, number];
   onFilterChange: (metricId: number, filter: FiltroRango | null) => void;
-  // Cambia este número para forzar al slider a volver a [min, max]. Lo usa
-  // "Limpiar filtros" para resetear la ventana visual cuando el padre borra
-  // los filtros (no podemos resetear desde onFilterChange porque al limpiar
-  // ya no hay nada que commitear).
   resetSignal?: number;
 }) => {
   const min = range?.min ?? 0;
   const max = range?.max ?? 100;
-  const dataScale = range?.scale ?? 'linear';
+  const detectedScale = range?.scale ?? 'linear';
+  const scaleMode = resolveRangeScale(metric.escala_rango, detectedScale, min);
 
   // Ventana seleccionada en VALORES ABSOLUTOS (fuente de verdad del usuario).
   const [win, setWin] = useState<[number, number]>([min, max]);
-  const [scaleMode, setScaleMode] = useState<RangeScale>(dataScale);
-  const initializedRef = useRef(false);
 
-  // Inicializa la ventana + escala cuando llega el rango del dato. Solo una vez por métrica
-  // (el componente se remonta con key={metric.id}, así el ref arranca en false).
+  // Sincroniza la ventana con el filtro persistido (o rango completo si no hay filtro).
+  // Al quitar un tag de rango, initialWin pasa a undefined y el slider vuelve a [min, max].
   useEffect(() => {
-    if (!initializedRef.current && range && min < max) {
-      const start: [number, number] = initialWin
-        ? [Math.max(min, Math.min(initialWin[0], max)), Math.max(min, Math.min(initialWin[1], max))]
-        : [min, max];
-      setWin(start);
-      setScaleMode(dataScale);
-      initializedRef.current = true;
+    if (!range || min >= max) return;
+    if (initialWin) {
+      setWin([
+        Math.max(min, Math.min(initialWin[0], max)),
+        Math.max(min, Math.min(initialWin[1], max)),
+      ]);
+    } else {
+      setWin([min, max]);
     }
-  }, [min, max, dataScale, range, initialWin]);
+  }, [initialWin, min, max, range]);
 
-  // Reset externo (botón "Limpiar filtros"): vuelve la ventana al rango completo.
-  // NO toca scaleMode para no pisar la elección de escala del usuario.
+  // Reset externo (botón "Limpiar filtros"): refuerza el rango completo.
   useEffect(() => {
-    if (resetSignal === undefined) return;
+    if (resetSignal === undefined || resetSignal === 0) return;
     setWin([min, max]);
   }, [resetSignal, min, max]);
 
@@ -167,45 +163,65 @@ const RangeFilter = ({ metric, range, initialWin, onFilterChange, resetSignal }:
     }
   };
 
-  const handleEscalaChange = (scale: string) => {
-    setScaleMode(scale as RangeScale);
-    onFilterChange(metric.id, null); // cambia la escala de lectura; la ventana se mantiene
-  };
-
   const handleClear = () => {
     setWin([min, max]);
     onFilterChange(metric.id, null);
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <span className="text-sm font-medium w-[150px] truncate" title={metric.nombre_amigable}>{metric.nombre_amigable}:</span>
-      <div className="min-w-[260px] max-w-[340px] flex-1">
-        <Slider
-          min={0}
-          max={100}
-          step={1}
-          value={pos}
-          onValueChange={handleDrag}
-          onValueCommit={handleCommit}
-          className="w-full"
-        />
-        <div className="mt-1 flex justify-between text-[11px] font-mono text-muted-foreground">
-          <span>{formatCompact(min)}</span>
-          <span>{isFullRange ? 'Todo el rango' : `${formatCompact(win[0])} – ${formatCompact(win[1])}`}</span>
-          <span>{formatCompact(max)}</span>
-        </div>
-      </div>
-      <Select value={scaleMode} onValueChange={handleEscalaChange}>
-        <SelectTrigger className="w-[100px]"><SelectValue placeholder="Escala" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="log">Log</SelectItem>
-          <SelectItem value="linear">Lineal</SelectItem>
-        </SelectContent>
-      </Select>
-      {!isFullRange && (
-        <Button variant="ghost" size="sm" onClick={handleClear} className="h-7 text-xs">Limpiar</Button>
+    <div
+      className={cn(
+        "flex min-w-[272px] max-w-[320px] flex-col gap-2 rounded-lg border px-3 py-2.5 transition-colors",
+        isFullRange
+          ? "border-border/50 bg-muted/20"
+          : "border-primary/30 bg-primary/[0.06] shadow-sm",
       )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium leading-tight" title={metric.nombre_amigable}>
+            {metric.nombre_amigable}
+          </p>
+          <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+            {isFullRange
+              ? "Todo el rango"
+              : `${formatCompact(win[0])} – ${formatCompact(win[1])}`}
+          </p>
+        </div>
+        {!isFullRange && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-background/80 hover:text-foreground"
+            aria-label={`Limpiar filtro de ${metric.nombre_amigable}`}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      <Slider
+        min={0}
+        max={100}
+        step={0.5}
+        value={pos}
+        onValueChange={handleDrag}
+        onValueCommit={handleCommit}
+        className={cn(
+          "w-full py-1",
+          "[&_[data-slot=slider-track]]:h-2 [&_[data-slot=slider-track]]:bg-background/80",
+          "[&_[data-slot=slider-range]]:bg-primary/90",
+          "[&_[data-slot=slider-thumb]]:size-4 [&_[data-slot=slider-thumb]]:border-2",
+          "[&_[data-slot=slider-thumb]]:border-primary [&_[data-slot=slider-thumb]]:bg-background",
+          "[&_[data-slot=slider-thumb]]:shadow-md [&_[data-slot=slider-thumb]]:hover:ring-4",
+          "[&_[data-slot=slider-thumb]]:hover:ring-primary/20",
+        )}
+      />
+
+      <div className="flex justify-between text-[10px] tabular-nums text-muted-foreground/80">
+        <span>{formatCompact(min)}</span>
+        <span>{formatCompact(max)}</span>
+      </div>
     </div>
   );
 };
@@ -306,6 +322,11 @@ export function FilterBar({
     metric => metric.id !== selectedPrimaryMetric
   );
 
+  const availablePrimaryMetrics = useMemo(
+    () => activeMetrics.filter(m => m.tipo === TipoMetricaEnum.ELECTORAL),
+    [activeMetrics]
+  );
+
   // Métrica objetos derivados de los IDs seleccionados.
   const primaryMetric = selectedPrimaryMetric
     ? activeMetrics.find(m => m.id === selectedPrimaryMetric) ?? null
@@ -355,10 +376,14 @@ export function FilterBar({
         <div className="flex items-center gap-3">
           {onPrimaryMetricChange && (
             <Select value={selectedPrimaryMetric?.toString() ?? "none"} onValueChange={handlePrimaryMetricChange}>
-              <SelectTrigger className="w-[250px]"><SelectValue placeholder="Métrica Principal..." /></SelectTrigger>
+              <SelectTrigger
+                className={`w-[250px] ${(selectedPrimaryMetric?.toString() ?? "none") === "none" ? "text-muted-foreground" : ""}`}
+              >
+                <SelectValue placeholder="Métrica primaria" />
+              </SelectTrigger>
               <SelectContent className="z-[9999]">
-                <SelectItem value="none">Ninguna métrica</SelectItem>
-                {activeMetrics.map(metric => <SelectItem key={metric.id} value={metric.id.toString()}>{metric.nombre_amigable}</SelectItem>)}
+                <SelectItem value="none">Métrica primaria</SelectItem>
+                {availablePrimaryMetrics.map(metric => <SelectItem key={metric.id} value={metric.id.toString()}>{metric.nombre_amigable}</SelectItem>)}
               </SelectContent>
             </Select>
           )}
@@ -376,10 +401,22 @@ export function FilterBar({
           {onSecondaryMetricsChange && (
             <Popover open={showSecondaryMetricsPopover} onOpenChange={setShowSecondaryMetricsPopover}>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-[250px] justify-between">
-                  Métricas Secundarias
-                  {selectedSecondaryMetrics.length > 0 && <Badge variant="secondary" className="ml-2">{selectedSecondaryMetrics.length}</Badge>}
-                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                <Button variant="outline" className="w-[250px] justify-between font-normal">
+                  <span
+                    className={
+                      selectedSecondaryMetrics.length === 0
+                        ? "truncate text-muted-foreground"
+                        : "truncate"
+                    }
+                  >
+                    Métricas secundarias
+                  </span>
+                  <span className="ml-2 flex shrink-0 items-center gap-2">
+                    {selectedSecondaryMetrics.length > 0 && (
+                      <Badge variant="secondary">{selectedSecondaryMetrics.length}</Badge>
+                    )}
+                    <ChevronDown className="h-4 w-4 opacity-50" />
+                  </span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[250px] p-0 z-[9999]">
@@ -405,7 +442,7 @@ export function FilterBar({
           {secondaryFilters.length > 0 && (
             <>
               <Separator orientation="vertical" className="h-6" />
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-stretch gap-2">
                 {secondaryFilters.map(metric => renderMetricFilter(metric))}
               </div>
             </>

@@ -75,9 +75,14 @@ class Metrica(BaseModel):
     nombre_amigable: str
     is_active: bool
     tipo: TipoMetrica # Campo añadido
+    escala_rango: Literal["log", "linear"] | None = None
     archivo: ArchivoForMetrica | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MetricaEscalaUpdate(BaseModel):
+    escala_rango: Literal["log", "linear"] | None = None
 
 # --- Filtros Genéricos ---
 
