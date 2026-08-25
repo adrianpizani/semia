@@ -5,6 +5,9 @@ export interface SvgPathFeature {
   d: string
   nombre: string
   fill: string
+  /** Centro aproximado en coords del viewBox (para demos / badges). */
+  cx: number
+  cy: number
 }
 
 const CHOROPLETH_FILLS = [
@@ -90,6 +93,23 @@ function geometryToPath(
   return ""
 }
 
+function geometryCentroid(
+  geom: Geometry,
+  project: (p: Position) => [number, number],
+): [number, number] {
+  let sx = 0
+  let sy = 0
+  let n = 0
+  visitPositions(geom, (p) => {
+    const [x, y] = project(p)
+    sx += x
+    sy += y
+    n += 1
+  })
+  if (n === 0) return [0, 0]
+  return [sx / n, sy / n]
+}
+
 export function geojsonToSvgPaths(
   fc: FeatureCollection,
   width = 800,
@@ -110,11 +130,14 @@ export function geojsonToSvgPaths(
     .filter((f) => f.geometry)
     .map((feature, index) => {
       const nombre = String(feature.properties?.nombre ?? "")
+      const [cx, cy] = geometryCentroid(feature.geometry!, project)
       return {
         id: feature.id ?? index,
         d: geometryToPath(feature.geometry!, project),
         nombre,
         fill: hashChoroplethFill(nombre || String(index)),
+        cx,
+        cy,
       }
     })
 

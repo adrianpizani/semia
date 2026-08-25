@@ -178,4 +178,17 @@ path.semia-municipio--instant {
   body {
     @apply bg-background text-foreground;
   }
+  /* Manito en controles clickeables de toda la app */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  label[for],
+  a[href],
+  input[type="button"]:not(:disabled),
+  input[type="submit"]:not(:disabled),
+  input[type="reset"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  select:not(:disabled) {
+    cursor: pointer;
+  }
 }

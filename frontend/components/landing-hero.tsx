@@ -1,7 +1,10 @@
-import { LandingMap } from "@/components/landing-map"
+"use client"
 
-/** Banner izquierdo: mapa real de municipios PBA con hover interactivo. */
-export function LandingHero() {
+import { LandingMap } from "@/components/landing-map"
+import type { LandingDemoMode } from "@/lib/landing-demo"
+
+/** Banner izquierdo: mapa real de municipios PBA + demos al hover de features. */
+export function LandingHero({ demoMode = null }: { demoMode?: LandingDemoMode }) {
   return (
     <div className="relative flex h-full flex-col justify-end overflow-hidden bg-[#0c1f33]">
       {/* Grilla tipo GIS */}
@@ -19,7 +22,7 @@ export function LandingHero() {
 
       {/* Mapa real — municipios de la PBA */}
       <div className="absolute inset-0 z-[2]">
-        <LandingMap />
+        <LandingMap demoMode={demoMode} />
       </div>
 
       {/* Viñeta inferior para legibilidad del texto */}
@@ -27,7 +30,7 @@ export function LandingHero() {
 
       <div className="relative z-10 p-8 lg:p-12">
         <p className="mb-2 text-xs font-medium uppercase tracking-[0.25em] text-sky-300/80">
-          Provincia de Buenos Aires · partidos bonaerenses
+          Provincia de Buenos Aires
         </p>
         <h1 className="text-4xl font-bold tracking-tight text-white lg:text-5xl">
           sem<span className="text-sky-400">IA</span>
