@@ -75,7 +75,7 @@ export default function AnalisisPage() {
         availableVoteTypes={view.availableVoteTypes}
         metricRanges={view.metricRanges}
         actions={
-          <Button variant="outline" size="sm" asChild>
+          <Button variant="outline" size="sm" className="bg-white hover:bg-white" asChild>
             <Link href="/">
               <ArrowLeft className="mr-1 h-4 w-4" />
               Volver al mapa
@@ -83,7 +83,7 @@ export default function AnalisisPage() {
           </Button>
         }
       />
-      <div className="flex flex-1 gap-4 overflow-hidden p-4">
+      <div className="flex flex-1 gap-4 overflow-hidden bg-primary/[0.025] p-4">
         <div className="flex min-h-0 min-w-0 flex-[3] flex-col">
           <AnalisisTable
             rows={filtered}
