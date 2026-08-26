@@ -67,30 +67,16 @@ export function getPartyRowTint(
   return color;
 }
 
-// Opacidad del mapa en modo "intensidad": 0% de votos = casi transparente,
-// 100% = saturado. Compartida con la leyenda para que coincida con el mapa.
-const INTENSITY_OPACITY_MIN = 0.08;
-const INTENSITY_OPACITY_MAX = 0.92;
+// Opacidad del mapa en modo "intensidad".
+// Se estira al rango observado del partido (getShareDomain): en elecciones reales
+// los % suelen concentrarse en una franja estrecha y un mapeo 0-100% deja el mapa plano.
+const INTENSITY_OPACITY_MIN = 0.12;
+const INTENSITY_OPACITY_MAX = 0.95;
 
-// Misma curva que el mapa, pero con techo bajo para fondos de fila legibles.
 const ROW_INTENSITY_ALPHA_MIN = 0.05;
 const ROW_INTENSITY_ALPHA_MAX = 0.3;
 
-export function getPartyIntensityRowTint(
-  partyName: string | null | undefined,
-  sharePercent: number | null | undefined,
-  boost = 0,
-): string | undefined {
-  if (!partyName || sharePercent == null) return undefined;
-  const share = Math.max(0, Math.min(1, sharePercent / 100));
-  const mapOpacity = getIntensityOpacity(share);
-  const t = (mapOpacity - INTENSITY_OPACITY_MIN) / (INTENSITY_OPACITY_MAX - INTENSITY_OPACITY_MIN);
-  const alpha = Math.min(
-    ROW_INTENSITY_ALPHA_MAX + boost,
-    ROW_INTENSITY_ALPHA_MIN + t * (ROW_INTENSITY_ALPHA_MAX - ROW_INTENSITY_ALPHA_MIN) + boost,
-  );
-  return getPartyRowTint(partyName, alpha);
-}
+export type IntensityDomain = { min: number; max: number };
 
 export function getPartyVoteShare(
   resultados: { partido: string; votos: number }[] | undefined,
@@ -103,7 +89,53 @@ export function getPartyVoteShare(
   return row ? row.votos / total : 0;
 }
 
-export function getIntensityOpacity(share: number): number {
-  const clamped = Math.max(0, Math.min(1, share));
-  return INTENSITY_OPACITY_MIN + clamped * (INTENSITY_OPACITY_MAX - INTENSITY_OPACITY_MIN);
+// Dominio visual a partir de los % del partido en el recorte actual (p5-p95).
+export function getShareDomain(shares: number[]): IntensityDomain {
+  const finite = shares.filter(s => Number.isFinite(s)).sort((a, b) => a - b);
+  if (finite.length === 0) return { min: 0, max: 1 };
+
+  const pick = (q: number) => {
+    const i = (finite.length - 1) * q;
+    const lo = Math.floor(i);
+    const hi = Math.ceil(i);
+    if (lo === hi) return finite[lo];
+    return finite[lo] + (finite[hi] - finite[lo]) * (i - lo);
+  };
+
+  let min = finite.length >= 5 ? pick(0.05) : finite[0];
+  let max = finite.length >= 5 ? pick(0.95) : finite[finite.length - 1];
+
+  if (max - min < 0.03) {
+    const mid = (min + max) / 2;
+    min = Math.max(0, mid - 0.05);
+    max = Math.min(1, mid + 0.05);
+  }
+  if (max <= min) return { min: 0, max: 1 };
+  return { min, max };
+}
+
+export function getIntensityOpacity(
+  share: number,
+  domain: IntensityDomain = { min: 0, max: 1 },
+): number {
+  const span = domain.max - domain.min || 1;
+  const t = Math.max(0, Math.min(1, (share - domain.min) / span));
+  return INTENSITY_OPACITY_MIN + t * (INTENSITY_OPACITY_MAX - INTENSITY_OPACITY_MIN);
+}
+
+export function getPartyIntensityRowTint(
+  partyName: string | null | undefined,
+  sharePercent: number | null | undefined,
+  boost = 0,
+): string | undefined {
+  if (!partyName || sharePercent == null) return undefined;
+  const share = Math.max(0, Math.min(1, sharePercent / 100));
+  // Filas: escala absoluta 0-100% (el numero ya comunica la magnitud).
+  const mapOpacity = getIntensityOpacity(share, { min: 0, max: 1 });
+  const t = (mapOpacity - INTENSITY_OPACITY_MIN) / (INTENSITY_OPACITY_MAX - INTENSITY_OPACITY_MIN);
+  const alpha = Math.min(
+    ROW_INTENSITY_ALPHA_MAX + boost,
+    ROW_INTENSITY_ALPHA_MIN + t * (ROW_INTENSITY_ALPHA_MAX - ROW_INTENSITY_ALPHA_MIN) + boost,
+  );
+  return getPartyRowTint(partyName, alpha);
 }

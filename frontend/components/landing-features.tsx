@@ -1,6 +1,6 @@
 "use client"
 
-import { Brain, Map, ScatterChart, Share2, Table2, Upload } from "lucide-react"
+import { Brain, Globe, Map, ScatterChart, Share2, Table2, Upload } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { LANDING_FEATURES, type LandingDemoMode } from "@/lib/landing-demo"
 
@@ -10,6 +10,7 @@ const ICONS = {
   analisis: Table2,
   gestion: Upload,
   social: Share2,
+  web: Globe,
   ia: Brain,
 } as const
 
@@ -21,7 +22,7 @@ type Props = {
 
 export function LandingFeatures({ className, activeDemo = null, onDemoChange }: Props) {
   return (
-    <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2", className)}>
+    <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3", className)}>
       {LANDING_FEATURES.map(({ id, title, description, soon }) => {
         const Icon = ICONS[id]
         const isActive = activeDemo === id

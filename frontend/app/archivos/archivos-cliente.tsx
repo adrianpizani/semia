@@ -270,7 +270,7 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
   return (
     <div className="flex h-screen flex-col">
       {/* Header */}
-      <div className="border-b border-border bg-card px-6 py-4">
+      <div className="border-b border-primary/15 bg-primary/[0.07] px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Gestión de Archivos</h1>
@@ -284,7 +284,7 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
             }}
           >
             <DialogTrigger asChild>
-              <Button className="gap-2">
+              <Button variant="outline" className="gap-2 bg-white hover:bg-white">
                 <Upload className="h-4 w-4" />
                 Subir Archivo
               </Button>
@@ -409,10 +409,10 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto bg-amber-50/70 p-6">
         <div className="mx-auto max-w-7xl space-y-6">
           {/* Filters and Search */}
-          <Card>
+          <Card className="border-border/80 bg-white shadow-sm">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Archivos Subidos</CardTitle>
@@ -420,7 +420,7 @@ export function ArchivosCliente({ initialFiles }: ArchivosClienteProps) {
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Buscar por nombre..."
-                    className="pl-9"
+                    className="bg-white pl-9"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />

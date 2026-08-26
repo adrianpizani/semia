@@ -25,6 +25,8 @@ function demoLabel(mode: LandingDemoMode): string | null {
       return "Demo · dataset importado"
     case "social":
       return "Próximamente · feed social territorial"
+    case "web":
+      return "Próximamente · feed de noticias y portales"
     case "ia":
       return "Próximamente · hallazgos con IA"
     default:
@@ -157,6 +159,18 @@ export function LandingMap({ demoMode = null }: Props) {
         strokeOpacity: hot ? 0.85 : 0.2,
       }
     }
+    if (demoMode === "web") {
+      let h = 0
+      for (let i = 0; i < p.nombre.length; i++) h = (h * 17 + p.nombre.charCodeAt(i)) >>> 0
+      const covered = h % 4 === 0
+      return {
+        fill: covered ? "#f59e0b" : "#1e3a5f",
+        fillOpacity: covered ? 0.7 : 0.3,
+        stroke: covered ? "#fde68a" : "#7dd3fc",
+        strokeWidth: covered ? 1.1 : 0.4,
+        strokeOpacity: covered ? 0.85 : 0.2,
+      }
+    }
     if (demoMode === "ia") {
       let h = 0
       for (let i = 0; i < p.nombre.length; i++) h = (h * 23 + p.nombre.charCodeAt(i)) >>> 0
@@ -190,6 +204,11 @@ export function LandingMap({ demoMode = null }: Props) {
   const socialMentions = useMemo(() => {
     if (demoMode !== "social") return []
     return paths.filter((_, i) => i % 11 === 0).slice(0, 10)
+  }, [paths, demoMode])
+
+  const webMentions = useMemo(() => {
+    if (demoMode !== "web") return []
+    return paths.filter((_, i) => i % 12 === 1).slice(0, 8)
   }, [paths, demoMode])
 
   const iaInsights = useMemo(() => {
@@ -344,6 +363,25 @@ export function LandingMap({ demoMode = null }: Props) {
                 </g>
               )
             })}
+          </g>
+        )}
+
+        {/* Demo web: cobertura mediática */}
+        {demoMode === "web" && (
+          <g className="landing-demo-overlay" pointerEvents="none">
+            {webMentions.map((p, i) => (
+              <g key={`web-${String(p.id)}`}>
+                <circle cx={p.cx} cy={p.cy} r="5" fill="#fbbf24" fillOpacity="0.95" stroke="#0c1f33" strokeWidth="1">
+                  <animate attributeName="opacity" values="0.7;1;0.7" dur={`${1.6 + (i % 3) * 0.25}s`} repeatCount="indefinite" />
+                </circle>
+                <foreignObject x={Math.min(p.cx + 10, 560)} y={Math.max(p.cy - 24, 40)} width="150" height="40">
+                  <div className="rounded-lg border border-amber-300/40 bg-[#2a1c08]/92 px-2 py-1 text-[10px] text-amber-50 shadow-sm">
+                    <div className="font-semibold text-amber-200">Noticia · portal</div>
+                    <div className="truncate text-amber-100/70">{p.nombre}</div>
+                  </div>
+                </foreignObject>
+              </g>
+            ))}
           </g>
         )}
 
