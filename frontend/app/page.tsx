@@ -125,7 +125,7 @@ export default function DashboardPage() {
         availableVoteTypes={view.availableVoteTypes}
         metricRanges={view.metricRanges}
         actions={
-          <Button variant="outline" size="sm" asChild={!!view.selectedPrimaryMetric} disabled={!view.selectedPrimaryMetric}>
+          <Button variant="outline" size="sm" className="bg-white hover:bg-white" asChild={!!view.selectedPrimaryMetric} disabled={!view.selectedPrimaryMetric}>
             {view.selectedPrimaryMetric ? (
               <Link href="/analisis">
                 <Table2 className="mr-1 h-4 w-4" />
@@ -140,7 +140,7 @@ export default function DashboardPage() {
           </Button>
         }
       />
-      <div className="flex flex-1 gap-4 overflow-hidden p-4">
+      <div className="flex flex-1 gap-4 overflow-hidden bg-primary/[0.025] p-4">
         <div className="flex-[3] overflow-hidden rounded-lg border border-border">
           <MapViewClient
             selectedMetric={view.selectedPrimaryMetric}

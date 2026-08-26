@@ -14,6 +14,8 @@ import { Metrica, TipoMetricaEnum, AnyFiltro, FiltroCategorico, FiltroRango } fr
 import { formatCompact, fromNormPosition, toNormPosition, RangeScale, resolveRangeScale } from "@/lib/range-utils"
 import { cn } from "@/lib/utils"
 
+const dropdownSurface = "bg-white hover:bg-white"
+
 // --- Etiquetas legibles por dimensión (para los badges de filtros activos) ---
 const DIMENSION_LABELS: { [k: string]: string } = {
   agrupacion_nombre: "Partido",
@@ -64,7 +66,7 @@ const ElectoralFilter = ({
         value={selectedParty}
         onValueChange={(value) => onDimensionFilterChange(metric.id, "agrupacion_nombre", value === "all" ? [] : [value])}
       >
-        <SelectTrigger className="w-[220px]">
+        <SelectTrigger className={cn("w-[220px]", dropdownSurface)}>
           <SelectValue placeholder="Intensidad por partido..." />
         </SelectTrigger>
         <SelectContent className="z-[9999]">
@@ -76,7 +78,7 @@ const ElectoralFilter = ({
         value={selectedYear}
         onValueChange={(value) => onDimensionFilterChange(metric.id, "año", value === "all" ? [] : [value])}
       >
-        <SelectTrigger className="w-[130px]">
+        <SelectTrigger className={cn("w-[130px]", dropdownSurface)}>
           <SelectValue placeholder="Año..." />
         </SelectTrigger>
         <SelectContent className="z-[9999]">
@@ -88,7 +90,7 @@ const ElectoralFilter = ({
         value={selectedType}
         onValueChange={(value) => onDimensionFilterChange(metric.id, "votos_tipo", value === "all" ? [] : [value])}
       >
-        <SelectTrigger className="w-[170px]">
+        <SelectTrigger className={cn("w-[170px]", dropdownSurface)}>
           <SelectValue placeholder="Tipo de voto..." />
         </SelectTrigger>
         <SelectContent className="z-[9999]">
@@ -171,10 +173,8 @@ const RangeFilter = ({ metric, range, initialWin, onFilterChange, resetSignal }:
   return (
     <div
       className={cn(
-        "flex min-w-[272px] max-w-[320px] flex-col gap-2 rounded-lg border px-3 py-2.5 transition-colors",
-        isFullRange
-          ? "border-border/50 bg-muted/20"
-          : "border-primary/30 bg-primary/[0.06] shadow-sm",
+        "flex min-w-[272px] max-w-[320px] flex-col gap-2 rounded-lg border bg-white px-3 py-2.5 transition-colors",
+        isFullRange ? "border-primary/20" : "border-primary/45 shadow-sm",
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -192,7 +192,7 @@ const RangeFilter = ({ metric, range, initialWin, onFilterChange, resetSignal }:
           <button
             type="button"
             onClick={handleClear}
-            className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-background/80 hover:text-foreground"
+            className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label={`Limpiar filtro de ${metric.nombre_amigable}`}
           >
             <X className="h-3.5 w-3.5" />
@@ -209,7 +209,7 @@ const RangeFilter = ({ metric, range, initialWin, onFilterChange, resetSignal }:
         onValueCommit={handleCommit}
         className={cn(
           "w-full py-1",
-          "[&_[data-slot=slider-track]]:h-2 [&_[data-slot=slider-track]]:bg-background/80",
+          "[&_[data-slot=slider-track]]:h-2 [&_[data-slot=slider-track]]:bg-muted",
           "[&_[data-slot=slider-range]]:bg-primary/90",
           "[&_[data-slot=slider-thumb]]:size-4 [&_[data-slot=slider-thumb]]:border-2",
           "[&_[data-slot=slider-thumb]]:border-primary [&_[data-slot=slider-thumb]]:bg-background",
@@ -370,14 +370,18 @@ export function FilterBar({
   }
 
   return (
-    <div className="border-b border-border bg-card relative">
+    <div className="relative border-b border-primary/15 bg-primary/[0.07]">
       <div className="px-6 py-4 space-y-3">
         {/* Fila 1: métrica primaria (electoral) + sus filtros a la derecha */}
         <div className="flex items-center gap-3">
           {onPrimaryMetricChange && (
             <Select value={selectedPrimaryMetric?.toString() ?? "none"} onValueChange={handlePrimaryMetricChange}>
               <SelectTrigger
-                className={`w-[250px] ${(selectedPrimaryMetric?.toString() ?? "none") === "none" ? "text-muted-foreground" : ""}`}
+                className={cn(
+                  "w-[250px]",
+                  dropdownSurface,
+                  (selectedPrimaryMetric?.toString() ?? "none") === "none" ? "text-muted-foreground" : "",
+                )}
               >
                 <SelectValue placeholder="Métrica primaria" />
               </SelectTrigger>
@@ -401,7 +405,7 @@ export function FilterBar({
           {onSecondaryMetricsChange && (
             <Popover open={showSecondaryMetricsPopover} onOpenChange={setShowSecondaryMetricsPopover}>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-[250px] justify-between font-normal">
+                <Button variant="outline" className={cn("w-[250px] justify-between font-normal", dropdownSurface)}>
                   <span
                     className={
                       selectedSecondaryMetrics.length === 0
@@ -450,7 +454,7 @@ export function FilterBar({
         </div>
       </div>
       {filters.length > 0 && (
-        <div className="border-t border-border bg-muted/30 px-6 py-3">
+        <div className="border-t border-primary/10 bg-white px-6 py-3">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-muted-foreground">Filtros activos:</span>
             <div className="flex flex-1 flex-wrap items-center gap-2">
