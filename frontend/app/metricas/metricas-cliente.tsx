@@ -90,16 +90,16 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
 
   return (
     <div className="flex h-screen flex-col">
-      <div className="border-b border-border bg-card px-6 py-4">
+      <div className="border-b border-primary/15 bg-primary/[0.07] px-6 py-4">
         <h1 className="text-2xl font-semibold">Gestión de Métricas</h1>
         <p className="text-sm text-muted-foreground">
           Activá métricas para el mapa y configurá la escala del slider de filtro (lineal o logarítmica).
         </p>
       </div>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto bg-amber-50/70 p-6">
         <div className="mx-auto max-w-7xl">
-          <Card>
+          <Card className="border-border/80 bg-white shadow-sm">
             <CardHeader>
               <CardTitle>Métricas Disponibles</CardTitle>
             </CardHeader>
@@ -141,7 +141,7 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
                               value={metrica.escala_rango ?? "auto"}
                               onValueChange={(value) => handleEscalaChange(metrica.id, value)}
                             >
-                              <SelectTrigger className="w-[150px]">
+                              <SelectTrigger className="w-[150px] bg-white hover:bg-white">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>

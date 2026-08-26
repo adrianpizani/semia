@@ -89,6 +89,7 @@ export default function MapViewClient({
     onEachFeatureMunicipio,
     onEachFeatureCircuito,
     loadCircuitos,
+    intensityDomain,
   } = useMapView(
     selectedMetric,
     electoralData,
@@ -179,7 +180,7 @@ export default function MapViewClient({
       </MapContainer>
 
       {!showLoading && legendParties.length > 0 && (
-        <PartyLegend parties={legendParties} highlightParty={highlightParty} />
+        <PartyLegend parties={legendParties} highlightParty={highlightParty} intensityDomain={intensityDomain} />
       )}
 
       {showLoading && (

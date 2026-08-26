@@ -5,6 +5,7 @@ export type LandingDemoMode =
   | "analisis"
   | "gestion"
   | "social"
+  | "web"
   | "ia"
 
 export const LANDING_FEATURES = [
@@ -35,13 +36,19 @@ export const LANDING_FEATURES = [
   {
     id: "social" as const,
     title: "Feed social",
-    description: "Seguí conversaciones y menciones territoriales en redes.",
+    description: "Menciones en redes que se convierten en métricas territoriales.",
+    soon: true,
+  },
+  {
+    id: "web" as const,
+    title: "Feed web",
+    description: "Noticias y portales convertidos en señales por partido o tema.",
     soon: true,
   },
   {
     id: "ia" as const,
     title: "Motor IA",
-    description: "Sugerencias inteligentes y hallazgos a partir de tus datos.",
+    description: "Hallazgos y cruces sugeridos a partir de tus datos cargados.",
     soon: true,
   },
 ] as const

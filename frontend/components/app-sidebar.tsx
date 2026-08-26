@@ -1,6 +1,6 @@
 "use client"
 
-import { Home, Settings, Upload, TrendingUp, LogOut, ShieldCheck, Table2 } from "lucide-react"
+import { Brain, Globe, Home, LogOut, Settings, Share2, ShieldCheck, Table2, TrendingUp, Upload } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { useSession } from "@/hooks/use-session"
 import { logout } from "@/lib/api"
 
@@ -22,7 +23,12 @@ const menuItems = [
   { title: "Análisis", url: "/analisis", icon: Table2 },
 ]
 
-// Acciones de administración: solo visibles para usuarios con rol "admin".
+const feedItems = [
+  { title: "Feed social", url: "/feeds/social", icon: Share2 },
+  { title: "Feed web", url: "/feeds/web", icon: Globe },
+  { title: "Motor IA", url: "/feeds/ia", icon: Brain },
+]
+
 const adminItems = [
   { title: "Gestión de Archivos", url: "/archivos", icon: Upload },
   { title: "Métricas", url: "/metricas", icon: TrendingUp },
@@ -31,6 +37,7 @@ const adminItems = [
 
 export function AppSidebar() {
   const { user } = useSession()
+  const pathname = usePathname()
   const isAdmin = user?.rol === "admin"
   const displayName = user?.nombre || user?.email?.split("@")[0] || "Usuario"
 
@@ -43,10 +50,31 @@ export function AppSidebar() {
             <SidebarMenu>
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
+                  <SidebarMenuButton asChild isActive={pathname === item.url}>
                     <Link href={item.url}>
                       <item.icon />
                       <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Inteligencia</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {feedItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={pathname === item.url}>
+                    <Link href={item.url}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                      <Badge variant="secondary" className="ml-auto text-[9px]">
+                        Soon
+                      </Badge>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -62,7 +90,7 @@ export function AppSidebar() {
               <SidebarMenu>
                 {adminItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
+                    <SidebarMenuButton asChild isActive={pathname === item.url}>
                       <Link href={item.url}>
                         <item.icon />
                         <span>{item.title}</span>

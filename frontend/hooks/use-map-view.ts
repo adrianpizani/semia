@@ -1,11 +1,11 @@
 // hooks/use-map-view.ts
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { Layer, PathOptions } from 'leaflet';
 import { loadCircuitosGeoJSONCached, loadMunicipiosGeoJSONCached } from '@/lib/geojson-cache';
 import { DomEvent } from 'leaflet';
 import { DistritoFeature, DistritoProperties, ElectoralData, MunicipioTooltipSecondaries } from '@/lib/types'; // Importar tipos comunes
-import { getIntensityOpacity, getPartyColor, getPartyVoteShare } from '@/lib/party-color';
+import { getIntensityOpacity, getPartyColor, getPartyVoteShare, getShareDomain, IntensityDomain } from '@/lib/party-color';
 import { formatCompact } from '@/lib/range-utils';
 
 // Normaliza un nombre geográfico para hacer match robusto
@@ -79,6 +79,12 @@ export const useMapView = (
     tooltipCtxRef.current = { electoralData, highlightParty, secondaryByGeo };
   }, [electoralData, highlightParty, secondaryByGeo]);
 
+  const intensityDomain: IntensityDomain = useMemo(() => {
+    if (!highlightParty || !electoralData?.length) return { min: 0, max: 1 };
+    const shares = electoralData.map(d => getPartyVoteShare(d.resultados, highlightParty));
+    return getShareDomain(shares);
+  }, [electoralData, highlightParty]);
+
   useEffect(() => {
     const loadMapData = async () => {
       try {
@@ -118,10 +124,10 @@ export const useMapView = (
     if (feature && electoralData) {
       const districtData = electoralData.find(d => d.geografia_id === feature.id);
       if (highlightParty) {
-        // Modo intensidad: color del partido elegido, opacidad = % de votos.
+        // Modo intensidad: color del partido, opacidad relativa al rango observado.
         const share = getPartyVoteShare(districtData?.resultados, highlightParty);
         fillColor = getPartyColor(highlightParty);
-        baseStyle.fillOpacity = getIntensityOpacity(share);
+        baseStyle.fillOpacity = getIntensityOpacity(share, intensityDomain);
       } else if (districtData && districtData.ganador) {
         fillColor = getPartyColor(districtData.ganador.partido);
       }
@@ -148,7 +154,7 @@ export const useMapView = (
       };
     }
     return baseStyle;
-  }, [hoveredId, electoralData, highlightParty, selectedMunicipio]);
+  }, [hoveredId, electoralData, highlightParty, selectedMunicipio, intensityDomain]);
 
   const styleCircuito = useCallback((feature?: DistritoFeature): PathOptions => {
     const circuitParentId = feature?.properties?.parent_id;
@@ -287,5 +293,6 @@ export const useMapView = (
     onEachFeatureMunicipio,
     onEachFeatureCircuito,
     loadCircuitos,
+    intensityDomain,
   };
 };
