@@ -4,6 +4,8 @@ Dashboard de análisis político sobre la Provincia de Buenos Aires. Carga datos
 
 La app pide login. Roles: **admin** (carga y gestión) y **viewer** (solo lectura).
 
+La portada demo del login (mapa + features) está archivada en `/login/landing` y **no se muestra** por defecto. Para previsualizarla en local: `LANDING_PREVIEW_ENABLED=true` en `.env` y abrir `/login/landing`.
+
 Otra documentación:
 
 | Archivo | Para qué |

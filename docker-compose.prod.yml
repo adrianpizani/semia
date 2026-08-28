@@ -79,6 +79,7 @@ services:
       # Dentro de la red Docker, 'backend' resuelve al servicio backend.
       BACKEND_URL: http://backend:8000
       AUTH_SECRET: ${AUTH_SECRET}
+      LANDING_PREVIEW_ENABLED: ${LANDING_PREVIEW_ENABLED:-false}
     depends_on:
       - backend
     expose:
