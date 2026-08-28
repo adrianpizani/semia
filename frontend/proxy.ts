@@ -6,6 +6,8 @@ import { createHmac, timingSafeEqual } from "node:crypto"
 const AUTH_SECRET = process.env.AUTH_SECRET || process.env.SECRET_KEY || "dev-secret-key-cambiar-en-produccion"
 const COOKIE_NAME = "access_token"
 const LOGIN_PATH = "/login"
+const LANDING_PREVIEW_PATH = "/login/landing"
+const landingPreviewEnabled = process.env.LANDING_PREVIEW_ENABLED === "true"
 
 function b64urlToBuffer(input: string): Buffer {
   const b64 = input.replace(/-/g, "+").replace(/_/g, "/")
@@ -43,17 +45,26 @@ function tokenIsValid(token: string | undefined): boolean {
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isLoginPath = pathname === LOGIN_PATH || pathname === `${LOGIN_PATH}/`
+  const isLandingPreviewPath =
+    pathname === LANDING_PREVIEW_PATH || pathname === `${LANDING_PREVIEW_PATH}/`
 
   const token = request.cookies.get(COOKIE_NAME)?.value
   const authed = tokenIsValid(token)
 
+  // Portada demo archivada: solo accesible con LANDING_PREVIEW_ENABLED=true.
+  if (isLandingPreviewPath && !landingPreviewEnabled) {
+    return NextResponse.redirect(new URL(LOGIN_PATH, request.url))
+  }
+
+  const isPublicAuthPath = isLoginPath || (isLandingPreviewPath && landingPreviewEnabled)
+
   // Si ya está logueado y pide el login, lo mandamos al dashboard.
-  if (isLoginPath && authed) {
+  if (isPublicAuthPath && authed) {
     return NextResponse.redirect(new URL("/", request.url))
   }
 
   // Nada se ve sin login: cualquier otra ruta sin sesión válida va a /login.
-  if (!isLoginPath && !authed) {
+  if (!isPublicAuthPath && !authed) {
     const loginUrl = new URL(LOGIN_PATH, request.url)
     loginUrl.searchParams.set("from", pathname)
     return NextResponse.redirect(loginUrl)

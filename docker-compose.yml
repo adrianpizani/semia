@@ -64,6 +64,7 @@ services:
       BACKEND_URL: http://backend:8000
       # Mismo secreto que el backend: proxy.ts lo usa para validar el JWT.
       AUTH_SECRET: ${SECRET_KEY:-${AUTH_SECRET:-dev-secret-key-cambiar-en-produccion}}
+      LANDING_PREVIEW_ENABLED: ${LANDING_PREVIEW_ENABLED:-false}
     volumes:
       - ./frontend:/app
       - /app/node_modules # Evita que el node_modules del host pise el del contenedor

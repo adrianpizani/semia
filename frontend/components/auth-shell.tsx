@@ -8,7 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 // La página de login se renderiza a pantalla completa, sin sidebar.
 export function AuthShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const isLogin = pathname === "/login"
+  const isLogin = pathname === "/login" || pathname.startsWith("/login/")
 
   if (isLogin) {
     return <div className="flex h-screen w-full">{children}</div>

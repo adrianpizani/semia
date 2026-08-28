@@ -140,7 +140,7 @@ export default function DashboardPage() {
           </Button>
         }
       />
-      <div className="flex flex-1 gap-4 overflow-hidden bg-primary/[0.025] p-4">
+      <div className="flex flex-1 gap-4 overflow-hidden bg-amber-50/70 p-4">
         <div className="flex-[3] overflow-hidden rounded-lg border border-border">
           <MapViewClient
             selectedMetric={view.selectedPrimaryMetric}

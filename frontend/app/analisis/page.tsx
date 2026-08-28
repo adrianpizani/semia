@@ -83,7 +83,7 @@ export default function AnalisisPage() {
           </Button>
         }
       />
-      <div className="flex flex-1 gap-4 overflow-hidden bg-primary/[0.025] p-4">
+      <div className="flex flex-1 gap-4 overflow-hidden bg-amber-50/70 p-4">
         <div className="flex min-h-0 min-w-0 flex-[3] flex-col">
           <AnalisisTable
             rows={filtered}
