@@ -1,282 +1,204 @@
-# Feed socioeconómico — plan EPH / INDEC
+# Feed socioeconómico — plan por etapas
 
-Extensión del modelo de feeds de Semia: datos **socioeconómicos oficiales (INDEC / EPH)** y **métricas propias** derivadas de microdatos, materializados como indicadores en el mapa y el análisis.
+Plan acotado para el **primer feed real**: INDEC / EPH por **aglomerado**, con ponderación a partido y visualización clara. Sin microdatos Semia hasta cerrar las etapas 1–4.
 
-```
-Fase 1 Geografía     →  aglomerados + pesos partido
-Fase 2 INDEC (oficial) →  series por aglomerado → métricas Semia
-Fase 3 Semia (propias) →  microdatos EPH → agregación → métricas Semia
-```
-
-**Estado actual:** microdatos locales (`data/usu_*_T126.xlsx`), CSV pobreza continua (`poblacion-con-ingresos-por-debajo-linea-pobreza-eph-continua.csv`), geografía Semia solo en **Partido** y **Circuito**. Sin nivel **Aglomerado** ni feed automatizado.
-
-**Relación con otros docs:** [Feeds.md](./Feeds.md) (modelo feed → métrica), [CONFIG.md](./CONFIG.md) (config futura del feed).
+**Documentos relacionados:** [Feeds.md](./Feeds.md) (modelo feed → métrica), [CONFIG.md](./CONFIG.md).
 
 ---
 
-## Problema central
+## Marco: Feed APIs
 
-La EPH publica indicadores por **aglomerado urbano** (Gran La Plata, Mar del Plata, Partidos del GBA, etc.), no por **partido/municipio** bonaerense. Semia opera en **partidos** para el mapa electoral.
+Los feeds externos no son solo pantallas mock: convergen en **Feed APIs** — configuración y orquestación de conectores.
 
-**Solución en dos capas:**
+```
+Feed APIs (config + jobs)  →  conector (Socio / Web / IA / INDEC…)  →  staging  →  métrica  →  mapa / análisis
+```
 
-1. **Capa aglomerado** — entidad geográfica propia (GeoJSON + tabla INDEC).
-2. **Capa partido** — valores **imputados** vía ponderación oficial INDEC (aglomerado → partidos que integran el aglomerado).
+| Conector | Estado | Qué configura en Feed APIs |
+|----------|--------|---------------------------|
+| **Socioeconómico (INDEC)** | **Primero — este doc** | Fuentes CSV/series, homologación aglomerado, frecuencia trimestral, publicación |
+| Social | Mock | OAuth, keywords, polling |
+| Web | Mock | RSS, Google News |
+| IA | Mock | Modelo, confianza, métricas elegibles |
 
-Sin eso, no se puede pintar el mapa de PBA con datos EPH sin distorsionar.
+**UI propuesta:** sección **Feed APIs** en Configuración (o `/feeds/apis`) con tab por conector. Socioeconómico es el primero que **persiste** config y dispara ingest real.
+
+**Hoy:** Configuración tiene mock; Feeds Social/Web/IA son demo. **Siguiente:** tab Feed APIs con Socioeconómico operativo; el resto se vuelca ahí cuando exista backend.
 
 ---
 
-## Fase 1 — Geografía: aglomerados + ponderación municipal
+## Enfoque acordado (v1 → mejora)
 
-### 1.1 Catálogo de aglomerados EPH (PBA)
+**v1 — Paramétrico + partido en mapa/análisis**
 
-Fuente: Anexo I del registro EPH (`EPH_registro_*.pdf`) + diccionario INDEC.
+1. Aglomerados solo en **tablas de referencia** (catálogo INDEC + pesos población), **sin** capa mapa aglomerado.
+2. INDEC llega por **aglomerado** → staging → job asigna el **mismo % oficial** a cada partido del aglomerado (según pesos de población, el % queda igual en todos; ver nota abajo).
+3. Valores publicados en `hechos_datos` a nivel **Partido** → se activan como **métrica secundaria** en Gestión de Métricas y se usan en mapa/análisis **igual que PBG o cualquier otra** (sin UX especial en v1).
+4. Metadata opcional en `dimension_extra` (`origen`, `aglomerado_cod`) para trazabilidad; badges en UI si hace falta después.
 
-**Aglomerados con cobertura en provincia de Buenos Aires** (códigos EPH):
+**Nota simple:** el % del aglomerado es un **promedio de la zona**. Repartir por población no inventa que La Matanza tenga otro % que Quilmes: en v1 todos los partidos del mismo aglomerado muestran **el mismo %**. Es aceptable como primer paso; hay que marcarlo en UI.
 
-| Código | Nombre INDEC | REGION macro |
-|--------|--------------|--------------|
-| 33 | Partidos del Gran Buenos Aires | 1 (Gran Buenos Aires) |
-| 2 | Gran La Plata | 43 (Pampeana) |
-| 34 | Mar del Plata–Batán | 43 |
-| 3 | Bahía Blanca–Cerri | 43 |
-| 38 | San Nicolás–Villa Constitución | 43 |
+**v2 — Mejorar desagregación**
 
-**Filtro de microdatos:** `(REGION, AGLOMERADO)` — no filtrar por “provincia” en la base; `REGION 42` es **Cuyo**, no PBA.
+| Camino | Qué mejora |
+|--------|------------|
+| Microdatos EPH (`usu_*`) | % calculado por partido/aglomerado con `PONDERA` (Etapa 5) |
+| Series INDEC más finas | Si publican desagregación que no tengamos hoy |
+| Reemplazo selectivo | Mantener oficial en staging; publicar Semia solo donde reemplace el estimado |
 
-### 1.2 GeoJSON de aglomerados
+---
 
-**Objetivo:** polígonos o puntos en `dimension_geografica` con `nivel = "Aglomerado"`.
+**5 aglomerados PBA (EPH):**
 
-| Fuente posible | Notas |
-|----------------|--------|
-| INDEC — centroides / mapas por aglomerado | Paquete R `eph::centroides_aglomerados`; referencia INDEC Nivel4-Tema |
-| Construcción propia | Unión de polígonos de partidos según lista INDEC de localidades del aglomerado |
-| Híbrido v1 | **Punto + radio** o **hull** de partidos ponderados → polígono simplificado para mapa |
+| Código | Nombre |
+|--------|--------|
+| 33 | Partidos del Gran Buenos Aires |
+| 2 | Gran La Plata |
+| 34 | Mar del Plata–Batán |
+| 3 | Bahía Blanca–Cerri |
+| 38 | San Nicolás–Villa Constitución |
+
+---
+
+## Etapas (orden fijo)
+
+Cada etapa tiene **una decisión**. No saltar a la siguiente sin cerrarla.
+
+---
+
+### Etapa 1 — Catálogo aglomerado (paramétrico)
+
+**Objetivo:** referencia INDEC en BD; **no** nueva capa en el mapa.
 
 **Entregables:**
+- `data/reference/aglomerados_eph_pba.csv` (código, nombre, region_macro)
+- Tabla `aglomerado_eph` (sin obligar `dimension_geografica` nivel Aglomerado en v1)
 
-- `data/geo/aglomerados_eph_pba.geojson`
-- Script `import_aglomerados.py` → `dimension_geografica` + geometría
-- Tabla `aglomerado_eph` (`codigo`, `nombre`, `region_macro`, `geografia_id`)
+**Decisión 1 — Cerrada:** **paramétrico** (sin GeoJSON aglomerado en v1).
 
-### 1.3 Ponderación aglomerado → partido (INDEC)
+---
 
-**Objetivo:** para cada aglomerado, peso de cada partido bonaerense que lo integra.
+### Etapa 2 — Ponderación y asignación a partido
 
-Fuente INDEC: documentos de **localidades incluidas en aglomerados EPH** (sitio anterior INDEC / anexos BUA). Alternativa: composición publicada en informes de aglomerados.
-
-**Tabla propuesta:** `aglomerado_partido_peso`
-
-| Campo | Descripción |
-|-------|-------------|
-| `aglomerado_cod` | Código EPH |
-| `partido_geografia_id` | FK a `dimension_geografica` (nivel Partido) |
-| `peso` | Proporción población hogar o viviendas (0–1, suma 1 por aglomerado) |
-| `fuente` | URL / documento INDEC |
-| `vigencia` | Desde trimestre / año |
-
-**Uso:**
-
-```text
-valor_partido_i = valor_aglomerado × peso_i
-```
-
-Solo para **métricas extensive** (población, hogares). Para **tasas** (% pobreza, desempleo): **no** prorratear el %; mantener tasa a nivel aglomerado y usar pesos solo si INDEC publica desagregación o para métricas derivadas con microdatos.
+**Objetivo:** pesos INDEC (población por partido dentro de cada aglomerado) + regla de publicación a `hechos_datos`.
 
 **Entregables:**
+- `data/reference/aglomerado_partido_pesos.csv`
+- Tabla `aglomerado_partido_peso`
+- Job: `staging (aglomerado_cod, periodo, valor)` → N filas partido con el **mismo %** del aglomerado
 
-- `data/reference/aglomerado_partido_pesos.csv` (curado manual + INDEC)
-- Validación cruzada con totales publicados por aglomerado
+**Regla v1 (acordada):**
+- Para **%** (pobreza, etc.): cada partido del aglomerado recibe el **mismo % oficial** del aglomerado.
+- Los pesos definen **qué partidos** entran (lista GBA, La Plata, etc.), no un % distinto por partido.
+- Partidos 1:1 (Bahía Blanca, Mar del Plata…): dato **directo**, sin badge estimado.
+- Partidos del agl. 33: badge **Estimado** + fuente aglomerado en tooltip.
 
-### 1.4 UI / mapa
-
-- Nuevo nivel en leyenda: **Aglomerado** (toggle con Partido).
-- Análisis: filas de aglomerado + partidos (con badge “imputado”).
-- Cruce electoral × socioeconómico: partido con valor imputado o aglomerado como dimensión.
-
-**Criterio de éxito Fase 1:** 5 aglomerados PBA en BD, pesos documentados, al menos un polígono/punto visible en mapa.
-
----
-
-## Fase 2 — Ingesta INDEC: datos oficiales por aglomerado
-
-### 2.1 “API INDEC” — realidad y opciones
-
-INDEC **no expone una API REST dedicada** para EPH microdatos. Opciones prácticas:
-
-| Canal | Qué da | Uso en Semia |
-|-------|--------|--------------|
-| **datos.gob.ar — API de series** | Series temporales (pobreza, etc.) | Job periódico → `feed_sources` |
-| **Datasets en datos.gob.ar / INDEC** | CSV/XLSX (ej. pobreza continua por aglomerado) | Download + ingest |
-| **FTP INDEC** (`usu_hogar`, `usu_individual`) | Microdatos trimestrales | Fase 3, no Fase 2 |
-| **REDATAM+SP** (INDEC) | Tabulados bajo demanda | Legacy; evaluar si simplifica algo |
-| **pyeph / eph (R)** | Descarga automatizada + canastas | Backend job Python |
-
-**Recomendación:** tratar el “feed INDEC” como **conector de ingesta** (no una sola API):
-
-```
-feed_indec_job  →  raw staging  →  normalizar aglomerado_cod + trimestre  →  hechos_datos / borrador métrica
-```
-
-### 2.2 Métricas oficiales v1 (revisar después)
-
-Partir de lo que **ya está agregado por aglomerado** y alineado con informes INDEC:
-
-| Métrica | Fuente inicial | Nivel |
-|---------|----------------|--------|
-| % población bajo línea de pobreza | CSV pobreza continua / datos.gob.ar | Aglomerado |
-| % indigencia | Idem | Aglomerado |
-| % GBA / La Plata / Mar del Plata… | Columnas del mismo dataset | Aglomerado |
-| Ingreso medio (si publicado en cuadros) | Series o cuadros EPH | Aglomerado |
-| Tasa de desempleo / actividad | Cuadros EPH trimestrales | Aglomerado |
-
-**En repo hoy:** `data/poblacion-con-ingresos-por-debajo-linea-pobreza-eph-continua.csv` — **listo para PoC** de ingest (wide → long por aglomerado).
-
-**Política:** marcar métricas oficiales con `origen = indec_oficial` y `revision_pendiente = true` hasta validar definiciones con el cliente.
-
-### 2.3 Pipeline de ingest (Fase 2)
-
-| Paso | Descripción |
-|------|-------------|
-| 1. Scheduler | Cron / Celery: trimestral + retry si INDEC tarda publicación |
-| 2. `feed_sources` | Tipo `indec_series`, URL dataset o id serie datos.gob.ar |
-| 3. Staging | `feed_indec_staging` (aglomerado_cod, periodo, indicador, valor, fuente_url) |
-| 4. Homologación | Map nombre columna → `aglomerado_cod` |
-| 5. Revisión | Borrador en Gestión de métricas (como feeds Social/Web) |
-| 6. Activación | `hechos_datos` + opcional imputación a partido (Fase 1) |
-
-### 2.4 Imputación a partido (métricas oficiales)
-
-- **Tasas (%):** mostrar en mapa solo donde hay 1:1 (ej. Bahía Blanca ≈ partido homónimo) o **no pintar** partidos del GBA con un solo % del aglomerado 33.
-- **Alternativa v1:** mapa por **aglomerado**; tabla de partidos con valores imputados marcados como estimados.
-- **v2:** si INDEC publica desagregación provincial/aglomerado más fina, consumirla directamente.
-
-**Criterio de éxito Fase 2:** al menos **pobreza continua** actualizada automáticamente; 5 aglomerados PBA en catálogo de métricas; fuente y fecha en cada valor.
+**Decisión 2 — Cerrada:** imputar a todos los partidos del aglomerado (mismo % oficial).
 
 ---
 
-## Fase 3 — Métricas Semia (propias, desde microdatos)
+### Etapa 3 — Métrica en la plataforma
 
-### 3.1 Objetivo
+**Objetivo:** el feed termina en una métrica más del catálogo, no en una pantalla nueva.
 
-Indicadores **calculados por Semia** desde `usu_hogar` / `usu_individual`, no copiados del informe INDEC:
-
-- Replicar metodología INDEC (canastas, adulto equivalente, línea de pobreza) **o** indicadores simplificados acordados con el cliente.
-- Permitir cruces y recortes que el informe oficial no publica (subconjuntos, ventanas, derivadas).
-
-**Marca:** `origen = semia_eph`, `nombre_amigable` distinto del oficial (ej. “Pobreza EPH Semia T1 2026”).
-
-### 3.2 Hogar vs individual
-
-| Archivo | Usar para |
-|---------|-----------|
-| **`usu_hogar`** | Pobreza, ingreso familiar (ITF), vivienda (IV*), NBI |
-| **`usu_individual`** | Desempleo, ocupación, educación, ingreso individual |
-
-Agregación: siempre con **`PONDERA`** (y `PONDIH` cuando aplique a hogar).
-
-### 3.3 Preproceso (no subir Excel crudo a Semia)
-
+**Flujo (igual que CSV hoy):**
 ```
-usu_* (nacional)  →  filtro PBA aglomerados  →  agregación ponderada  →  CSV Semia  →  procesador
+Feed APIs (borrador)  →  activar en /metricas  →  secundaria en mapa / análisis / cruce
 ```
 
-**Un script, muchas métricas** — no 98/234 uploads:
+**No hace falta v1:** toggle aglomerado, leyenda especial, panel dedicado. Si la métrica está activa, el mapa ya la consume.
 
-- `backend/scripts/eph_aggregate_pba.py`
-- Salida long: `aglomerado_cod, trimestre, metrica_clave, valor`
-- Salida partido (opcional): aplicar `aglomerado_partido_peso` solo donde metodología lo permita
-
-**Librerías de referencia:** [pyeph](https://pyeph.readthedocs.io/) (pobreza oficial), lógica inspirada en [eph (R)](https://ropensci.github.io/eph/) para canastas y etiquetas.
-
-### 3.4 Métricas Semia candidatas (priorizar con cliente)
-
-| Métrica | Fuente | Nivel |
-|---------|--------|--------|
-| % pobreza (metodología Semia/pyeph) | hogar | Aglomerado |
-| Ingreso medio per cápita familiar | hogar | Aglomerado |
-| % hogares sin agua de red | hogar | Aglomerado |
-| Tasa de desempleo | individual | Aglomerado |
-| % población con universitario completo | individual | Aglomerado |
-| Índice compuesto NBI proxy | hogar | Aglomerado |
-
-**Revisión pendiente:** lista final con cliente; no implementar las 234 columnas.
-
-### 3.5 Disponibilización en plataforma
-
-Mismo flujo que el resto de Semia:
-
-```
-eph_aggregate  →  staging (borrador)  →  Gestión de métricas  →  mapa / análisis / cruce
-```
-
-- Tipo métrica: `DEMOGRAFICA` o `ECONOMICA`.
-- `dimension_extra`: trimestre (`2026-T1`), opcional `origen=semia`.
-- Comparar en UI **oficial INDEC** vs **Semia** (dos series, misma geografía).
-
-**Criterio de éxito Fase 3:** un trimestre PBA procesado end-to-end; ≥3 métricas propias en catálogo; trazabilidad (script version, fecha microdato, filtros).
+**Decisión 3 — Cerrada:** métrica secundaria estándar.
 
 ---
 
-## Modelo de datos (resumen)
+### Etapa 4 — Feed APIs + ingest INDEC
 
-| Tabla / entidad | Rol |
-|-----------------|-----|
-| `dimension_geografica` | + nivel `Aglomerado` |
-| `aglomerado_eph` | Catálogo códigos INDEC |
-| `aglomerado_partido_peso` | Pesos oficiales |
-| `feed_sources` | URLs series / datasets INDEC |
-| `feed_indec_staging` | Valores crudos normalizados |
-| `metricas` | `origen`: `indec_oficial` \| `semia_eph` |
-| `hechos_datos` | Valores por `geografia_id` + periodo |
+**Objetivo:** sección **Feed APIs** (Configuración o `/feeds/apis`) para el conector socioeconómico: ver borradores, publicar métrica, config futura (frecuencia, fuentes, homologaciones).
 
----
+**Prerequisitos:** Etapas 1–2 (catálogo + pesos).
 
-## Orden de implementación
+**Entregables v1:**
+- Tab **Feed APIs → Socioeconómico**
+- Ver staging / borrador generado (aglomerado + periodo + valor)
+- Acción **Publicar** → crea/actualiza métrica + `hechos_datos` por partido (job aglomerado → partido)
+- Config mínima: fuente CSV, mapping columnas (luego ampliamos)
 
-| # | Entrega | Dependencias |
-|---|---------|--------------|
-| 1 | Catálogo aglomerados PBA + CSV pesos (manual INDEC) | — |
-| 2 | GeoJSON / import aglomerados | #1 |
-| 3 | PoC ingest CSV pobreza continua → staging → métrica | #1 |
-| 4 | Job datos.gob.ar / download INDEC | #3 |
-| 5 | UI: nivel Aglomerado en mapa + badge imputado | #2 |
-| 6 | Script `eph_aggregate_pba.py` + 3 métricas Semia | #1, microdatos |
-| 7 | Comparativa oficial vs Semia en análisis | #4, #6 |
+**Origen de datos — implementado (EPH trimestral + pyeph):**
 
----
+| Fase | Origen |
+|------|--------|
+| **4a** | Upload manual `usu_hogar` + `usu_individual` (TXT INDEC) o archivo de ejemplo en `data/` |
+| **4b** | **Descarga automática** vía [pyeph](https://github.com/institutohumai/pyeph) — botón «Descargar último trimestre INDEC» en Feed APIs |
 
-## Riesgos y decisiones abiertas
+**Motor de cálculo:** `pyeph_adapter` — canastas y adulto equivalente oficiales (pyeph), desempleo (LaborMarket), pobreza por hogar (PONDIH), ocupación e informalidad (PONDERA). Fallback a `eph_canastas_regionales.csv` si el trimestre aún no está en el mirror de canastas.
 
-| Tema | Opciones | Recomendación |
-|------|----------|---------------|
-| Tasas en mapa partido | No pintar / imputar / solo aglomerado | Mapa aglomerado + tabla partido imputado |
-| API INDEC | Solo datasets + series | No esperar REST EPH; conector multi-fuente |
-| Frecuencia | Trimestral (EPH) | Job post-publicación INDEC |
-| Métricas oficiales | Muchas columnas CSV | v1: pobreza + 2–3; resto backlog |
-| Validación | Diff vs informe INDEC | QA automático en staging (tolerancia %) |
+**Pipeline:**
+1. Microdatos EPH trimestrales (descarga o upload)
+2. Agregación por `AGLOMERADO` (5 aglomerados PBA)
+3. Staging por `aglomerado_cod` × indicador
+4. Job con pesos → filas partido
+5. Admin **Publicar** → métricas activables en Gestión de Métricas
+
+**Métricas v1:** pobreza, indigencia, desempleo, ocupación, informalidad (`*_eph_pct`).
+
+**Decisión 4 — Cerrada:** borrador en Feed APIs → activación manual en Métricas (como hoy).
+
+**Decisión 5 — Actualizada:** descarga pyeph/INDEC operativa; upload manual sigue disponible.
 
 ---
 
-## Próximos pasos inmediatos
+### Etapa 5 — Métricas Semia (microdatos) — después
 
-1. **Cliente:** confirmar lista de aglomerados PBA y 5 indicadores prioritarios (oficial + propios).
-2. **Equipo:** armar `aglomerado_partido_pesos.csv` desde documento INDEC de localidades.
-3. **PoC técnico:** ingest pobreza continua + 5 filas aglomerado en análisis (sin mapa).
-4. **Geo:** centroides INDEC → GeoJSON v1.
-5. Documentar en CONFIG tab “Feed socioeconómico” cuando exista pantalla.
+**Objetivo:** indicadores propios desde `usu_hogar` / `usu_individual` (pyeph, agregación PONDERA).
+
+**No empezar hasta:** Etapa 4 con al menos un trimestre oficial visible en la plataforma.
+
+**Entregables futuros:** `eph_aggregate_pba.py`, `origen=semia_eph`, comparativa oficial vs Semia en análisis.
+
+---
+
+## Checklist antes de codear
+
+| # | Decisión | Estado |
+|---|----------|--------|
+| 1 | Catálogo paramétrico (sin mapa aglomerado) | ✅ |
+| 2 | Mismo % por partido dentro del aglomerado | ✅ |
+| 3 | Métrica secundaria estándar (mapa como cualquier otra) | ✅ |
+| 4 | Borrador en Feed APIs → activar en Métricas | ✅ |
+| 5 | CSV primero; API después | ✅ |
+
+**Trabajo manual paralelo (sin código):**
+- [ ] Armar `aglomerados_eph_pba.csv`
+- [ ] Armar `aglomerado_partido_pesos.csv` desde documento INDEC localidades
+- [ ] Validar 2–3 valores pobreza CSV vs informe INDEC
+
+---
+
+## Modelo de datos (por etapa)
+
+| Etapa | Tablas / cambios |
+|-------|------------------|
+| 1 | `aglomerado_eph` (catálogo) |
+| 2 | `aglomerado_partido_peso` + job aglomerado → partido |
+| 3 | Nada extra en mapa — métrica en catálogo |
+| 4 | `feed_sources`, staging, **Feed APIs** UI, ingest CSV |
+| 5 | Microdatos → % por partido real (reemplaza estimados) |
+
+---
+
+## Qué NO hacer en la primera entrega
+
+- Subir `usu_*.xlsx` crudo a Semia
+- Pintar % pobreza del GBA en 24 partidos sin decisión 2 explícita
+- Prometer “API INDEC” única (es conector multi-fuente)
+- Mezclar Feed APIs con ingest de microdatos (Etapa 5)
 
 ---
 
 ## Referencias
 
-- Registro EPH: `data/EPH_registro_1T2026.pdf`
-- Microdatos local: `data/usu_hogar_T126.xlsx`, `data/usu_individual_T126.xlsx`
-- Pobreza continua: `data/poblacion-con-ingresos-por-debajo-linea-pobreza-eph-continua.csv`
-- [datos.gob.ar](https://www.datos.gob.ar/) — series y datasets
-- [INDEC bases EPH](https://www.indec.gob.ar/indec/web/Institucional-Indec-BasesDeDatos)
-- [eph R package — diccionario y centroides aglomerados](https://ropensci.github.io/eph/)
-- [pyeph](https://pyeph.readthedocs.io/)
-- Semia: `backend/app/services/processors/socioeconomic_csv_processor.py`, [Feeds.md](./Feeds.md)
+- `data/EPH_registro_1T2026.pdf`, `data/usu_*_T126.xlsx`
+- `data/poblacion-con-ingresos-por-debajo-linea-pobreza-eph-continua.csv`
+- [datos.gob.ar](https://www.datos.gob.ar/)
+- [eph R — centroides y diccionario aglomerados](https://ropensci.github.io/eph/)

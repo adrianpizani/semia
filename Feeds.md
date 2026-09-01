@@ -6,7 +6,7 @@ Semia no agrega tres apps aparte: los feeds **generan señales** que se material
 Feed (Social / Web / IA)  →  agregación + revisión  →  métrica en catálogo  →  mapa / análisis
 ```
 
-**Estado actual:** vistas mock en `/feeds/social`, `/feeds/web`, `/feeds/ia` (Próximamente).
+**Estado actual:** vistas mock en `/feeds/social`, `/feeds/web`, `/feeds/ia` (Próximamente). **Feed socioeconómico (INDEC)** es el primer conector real — plan por etapas en [Feed_Socioeconomico.md](./Feed_Socioeconomico.md). Configuración de todos los conectores converge en **Feed APIs** (tab en Configuración).
 
 ---
 

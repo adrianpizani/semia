@@ -10,6 +10,29 @@ const getBaseUrl = () => {
 
 const API_BASE_URL = `${getBaseUrl()}/api/v1`;
 
+/** Extrae mensaje legible de respuestas de error FastAPI (detail string o lista de validación). */
+export function extractApiError(data: unknown, fallback = 'Error en la solicitud'): string {
+  if (!data || typeof data !== 'object') return fallback;
+  const detail = (data as { detail?: unknown }).detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'msg' in item) return String((item as { msg: unknown }).msg);
+        return JSON.stringify(item);
+      })
+      .join('; ');
+  }
+  return fallback;
+}
+
+async function throwIfNotOk(response: Response, fallback: string): Promise<void> {
+  if (response.ok) return;
+  const errorData = await response.json().catch(() => ({}));
+  throw new Error(extractApiError(errorData, fallback));
+}
+
 async function cookieHeaderForServer(): Promise<string> {
   if (typeof window !== 'undefined') return '';
   try {
@@ -297,6 +320,102 @@ export const logout = async () => {
   if (typeof window !== 'undefined') {
     window.location.href = '/login';
   }
+};
+
+// --- Feed socioeconómico INDEC ---
+
+export interface FeedSocioStagingRow {
+  id: number
+  aglomerado_cod: number
+  aglomerado_nombre: string
+  indicador_clave: string
+  fecha_dato: string
+  valor: number
+  estado: string
+}
+
+export interface FeedSocioIngestResult {
+  inserted: number
+  skipped: number
+  columnas?: string[]
+  indicadores?: string[]
+  periodo?: string
+  fecha_dato?: string
+  source?: string
+  motor?: string
+  error?: string
+}
+
+export interface FeedSocioPreview {
+  staging_rows: number
+  partido_hechos_estimados: number
+  indicador_clave: string
+}
+
+export interface FeedSocioPublishResult {
+  hechos: number
+  fallidas: number
+  metrica_id: number
+  metrica_clave: string
+  archivo_id: number
+  log: string
+  publicados?: string[]
+  error?: string
+}
+
+export const getFeedSocioStaging = async (): Promise<FeedSocioStagingRow[]> => {
+  const response = await apiFetch('/feeds/socio/staging');
+  await throwIfNotOk(response, 'No se pudo cargar el staging');
+  return await response.json();
+};
+
+export const getFeedSocioPreview = async (): Promise<FeedSocioPreview> => {
+  const response = await apiFetch('/feeds/socio/preview');
+  await throwIfNotOk(response, 'No se pudo calcular la vista previa');
+  return await response.json();
+};
+
+export const uploadFeedSocioEphTrimestre = async (
+  hogarFile: File,
+  individualFile: File,
+): Promise<FeedSocioIngestResult> => {
+  const formData = new FormData();
+  formData.append('hogar_file', hogarFile);
+  formData.append('individual_file', individualFile);
+  const response = await fetch(`${API_BASE_URL}/feeds/socio/upload`, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
+  await throwIfNotOk(response, 'Error al subir archivos EPH');
+  return await response.json();
+};
+
+export const ingestFeedSocioSample = async (): Promise<FeedSocioIngestResult> => {
+  const response = await fetch(`${API_BASE_URL}/feeds/socio/sample`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  await throwIfNotOk(response, 'Error al procesar trimestre de ejemplo');
+  return await response.json();
+};
+
+export const downloadFeedSocioLatest = async (): Promise<FeedSocioIngestResult> => {
+  const response = await fetch(`${API_BASE_URL}/feeds/socio/download-latest`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  await throwIfNotOk(response, 'Error al descargar último trimestre INDEC');
+  return await response.json();
+};
+
+export const publishFeedSocio = async (): Promise<FeedSocioPublishResult> => {
+  const response = await fetch(`${API_BASE_URL}/feeds/socio/publish`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  await throwIfNotOk(response, 'Error al publicar');
+  return await response.json();
 };
 
 

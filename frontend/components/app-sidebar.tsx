@@ -1,6 +1,6 @@
 "use client"
 
-import { Brain, Globe, Home, LogOut, Settings, Share2, ShieldCheck, Table2, TrendingUp, Upload } from "lucide-react"
+import { Brain, Globe, Home, LogOut, Plug, Settings, Share2, ShieldCheck, Table2, TrendingUp, Upload } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -30,6 +30,7 @@ const feedItems = [
 ]
 
 const adminItems = [
+  { title: "Feed APIs", url: "/feeds/apis", icon: Plug },
   { title: "Gestión de Archivos", url: "/archivos", icon: Upload },
   { title: "Métricas", url: "/metricas", icon: TrendingUp },
   { title: "Configuración", url: "/configuracion", icon: Settings },

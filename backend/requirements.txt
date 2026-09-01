@@ -12,3 +12,6 @@ python-multipart # Required for FastAPI form data (file uploads)
 PyJWT # Auth: emisión y validación de tokens JWT
 bcrypt # Auth: hashing seguro de contraseñas
 alembic # Migraciones de schema de la DB
+pyeph # Descarga y cálculos EPH INDEC (microdatos trimestrales)
+wget # Dependencia de pyeph para descarga desde mirrors
+xlrd # Dependencia de pyeph

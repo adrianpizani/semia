@@ -32,12 +32,14 @@ services:
       DATABASE_URL: postgresql+asyncpg://root:root@db/pba_dashboard
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@semia.studio}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      PYEPH_CACHE_DIR: /tmp/pyeph-cache
     volumes:
       - ./backend/app:/app
       # El bind de ./backend/app oculta lo que el Dockerfile copia fuera de app/.
       - ./backend/static:/app/static
       - ./backend/alembic.ini:/app/alembic.ini:ro
-      - ./backend/migrations:/app/migrations 
+      - ./backend/migrations:/app/migrations
+      - ./data:/data:ro
     depends_on:
       db: 
         condition: service_healthy
