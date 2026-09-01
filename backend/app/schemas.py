@@ -204,4 +204,44 @@ class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: Usuario
-    
+
+
+# --- Feed socioeconómico INDEC ---
+
+class FeedSocioStagingRow(BaseModel):
+    id: int
+    aglomerado_cod: int
+    aglomerado_nombre: str
+    indicador_clave: str
+    fecha_dato: str
+    valor: float
+    estado: str
+
+
+class FeedSocioIngestResult(BaseModel):
+    inserted: int
+    skipped: int
+    columnas: list[str] | None = None
+    indicadores: list[str] | None = None
+    periodo: str | None = None
+    fecha_dato: str | None = None
+    source: str | None = None
+    motor: str | None = None
+    error: str | None = None
+
+
+class FeedSocioPreview(BaseModel):
+    staging_rows: int
+    partido_hechos_estimados: int
+    indicador_clave: str
+
+
+class FeedSocioPublishResult(BaseModel):
+    hechos: int
+    fallidas: int
+    metrica_id: int
+    metrica_clave: str
+    archivo_id: int
+    log: str
+    publicados: list[str] | None = None
+    error: str | None = None

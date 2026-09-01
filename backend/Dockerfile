@@ -21,7 +21,8 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYEPH_CACHE_DIR=/var/cache/pyeph
 
 WORKDIR /app
 
@@ -57,7 +58,9 @@ COPY static ./static
 COPY entrypoint.sh /entrypoint.sh
 
 # Usuario no-root por seguridad.
-RUN useradd -m -u 1001 appuser && chown -R appuser:appuser /app \
+RUN mkdir -p /var/cache/pyeph \
+    && useradd -m -u 1001 appuser \
+    && chown -R appuser:appuser /app /var/cache/pyeph \
     && chmod +x /entrypoint.sh
 USER appuser
 

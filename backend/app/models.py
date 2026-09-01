@@ -105,5 +105,46 @@ class Procesador(Base):
     nivel_geografico = Column(String, nullable=False) # ej: 'Circuito', 'Partido'
     metric_name = Column(String, nullable=False) # Nombre de la métrica principal que este procesador generará
     mapeo_columnas = Column(JSON, nullable=False) # ej: {"COL_A": "dni", "COL_B": "votos"}
-    
+
+
+class FeedSocioEstado(enum.Enum):
+    BORRADOR = "BORRADOR"
+    PUBLICADO = "PUBLICADO"
+
+
+class AglomeradoEph(Base):
+    __tablename__ = "aglomerado_eph"
+
+    codigo = Column(Integer, primary_key=True)
+    nombre = Column(String, nullable=False)
+    region_macro = Column(Integer, nullable=True)
+
+    pesos = relationship("AglomeradoPartidoPeso", back_populates="aglomerado")
+    staging = relationship("FeedSocioStaging", back_populates="aglomerado")
+
+
+class AglomeradoPartidoPeso(Base):
+    __tablename__ = "aglomerado_partido_peso"
+
+    id = Column(Integer, primary_key=True, index=True)
+    aglomerado_cod = Column(Integer, ForeignKey("aglomerado_eph.codigo"), index=True, nullable=False)
+    partido_nombre = Column(String, nullable=False)
+    peso = Column(Numeric(10, 6), nullable=False)
+    fuente = Column(String, nullable=True)
+
+    aglomerado = relationship("AglomeradoEph", back_populates="pesos")
+
+
+class FeedSocioStaging(Base):
+    __tablename__ = "feed_socio_staging"
+
+    id = Column(Integer, primary_key=True, index=True)
+    aglomerado_cod = Column(Integer, ForeignKey("aglomerado_eph.codigo"), nullable=False)
+    indicador_clave = Column(String, nullable=False, index=True)
+    fecha_dato = Column(Date, nullable=False, index=True)
+    valor = Column(Numeric(15, 4), nullable=False)
+    estado = Column(Enum(FeedSocioEstado), default=FeedSocioEstado.BORRADOR, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    aglomerado = relationship("AglomeradoEph", back_populates="staging")
     
