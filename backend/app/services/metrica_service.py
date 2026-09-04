@@ -1,4 +1,5 @@
 # services/metrica_service.py
+from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -49,14 +50,51 @@ async def _geos_for_filter(db: AsyncSession, filtro: schemas.AnyFiltro) -> set[i
 
 async def get_all_metrics(db: AsyncSession) -> list[schemas.Metrica]:
     """
-    Recupera todas las métricas de la base de datos, incluido su archivo de origen relacionado,
-    y las convierte explícitamente a esquemas Pydantic.
+    Recupera todas las métricas, con trimestre EPH vigente cuando aplica.
     """
+    from services.eph_microdata_service import EPH_INDICATORS
+    from services.feed_socio_service import fecha_to_periodo, get_or_create_feed_socio_config
+
     query = select(Metricas).options(selectinload(Metricas.archivo))
     result = await db.execute(query)
     db_metrics = result.scalars().unique().all()
 
-    return [schemas.Metrica.model_validate(db_metric) for db_metric in db_metrics]
+    cfg = await get_or_create_feed_socio_config(db)
+    trimestre_referencia = cfg.trimestre_referencia
+
+    eph_claves = set(EPH_INDICATORS.keys())
+    max_fecha_by_metric: dict[int, date | None] = {}
+    if eph_claves:
+        fecha_rows = await db.execute(
+            select(
+                Hechos_Datos.metrica_id,
+                func.max(Hechos_Datos.fecha_dato),
+            )
+            .join(Metricas, Hechos_Datos.metrica_id == Metricas.id)
+            .where(Metricas.nombre_clave.in_(eph_claves))
+            .group_by(Hechos_Datos.metrica_id)
+        )
+        max_fecha_by_metric = {row[0]: row[1] for row in fecha_rows.all()}
+
+    metrics_out: list[schemas.Metrica] = []
+    for db_metric in db_metrics:
+        metric = schemas.Metrica.model_validate(db_metric)
+        if db_metric.nombre_clave not in eph_claves:
+            metrics_out.append(metric)
+            continue
+
+        max_fecha = max_fecha_by_metric.get(db_metric.id)
+        periodo_publicado = fecha_to_periodo(max_fecha) if max_fecha else None
+        es_vigente = None
+        if periodo_publicado and trimestre_referencia:
+            es_vigente = periodo_publicado == trimestre_referencia
+
+        metric.periodo_publicado = periodo_publicado
+        metric.trimestre_referencia = trimestre_referencia
+        metric.es_trimestre_vigente = es_vigente
+        metrics_out.append(metric)
+
+    return metrics_out
 
 async def toggle_metric_status(db: AsyncSession, metric_id: int) -> schemas.Metrica | None:
     """
@@ -250,6 +288,17 @@ async def get_all_generic_data_for_metric(db: AsyncSession, metric_id: int, filt
         .join(Metricas, Hechos_Datos.metrica_id == Metricas.id)
         .where(Hechos_Datos.metrica_id == metric_id)
     )
+
+    from services.eph_microdata_service import EPH_INDICATORS
+
+    metric_row = await db.get(Metricas, metric_id)
+    if metric_row and metric_row.nombre_clave in EPH_INDICATORS:
+        max_fecha = await db.execute(
+            select(func.max(Hechos_Datos.fecha_dato)).where(Hechos_Datos.metrica_id == metric_id)
+        )
+        latest = max_fecha.scalar()
+        if latest:
+            stmt = stmt.where(Hechos_Datos.fecha_dato == latest)
 
     stmt = _apply_filtros(stmt, self_filters)
 

@@ -8,19 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge, BadgeProps } from "@/components/ui/badge"
 import { toggleMetrica, updateMetricaEscala } from "@/lib/api"
-import { TipoMetricaEnum } from "@/lib/types"
+import { Metrica, TipoMetricaEnum } from "@/lib/types"
 
 interface ArchivoForMetrica {
   id: number;
   nombre_visible: string;
 }
 
-interface MetricaItem {
-  id: number;
-  nombre_amigable: string;
-  is_active: boolean;
-  tipo: TipoMetricaEnum;
-  escala_rango?: 'log' | 'linear' | null;
+interface MetricaItem extends Metrica {
   archivo: ArchivoForMetrica | null;
 }
 
@@ -44,6 +39,31 @@ const TipoMetricaBadge: React.FC<{ tipo: TipoMetricaEnum }> = ({ tipo }) => {
 
 function hasRangeScale(tipo: TipoMetricaEnum): boolean {
   return tipo === TipoMetricaEnum.ECONOMICA || tipo === TipoMetricaEnum.DEMOGRAFICA;
+}
+
+function TrimestreBadge({ metrica }: { metrica: MetricaItem }) {
+  if (!metrica.periodo_publicado) {
+    return <span className="text-sm text-muted-foreground">—</span>
+  }
+
+  const vigente = metrica.es_trimestre_vigente
+  const ref = metrica.trimestre_referencia
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Badge variant={vigente ? "default" : "secondary"} className={vigente ? "bg-emerald-600 hover:bg-emerald-600" : ""}>
+        {metrica.periodo_publicado}
+      </Badge>
+      {ref && !vigente && (
+        <span className="text-xs text-amber-700">
+          Referencia: {ref}
+        </span>
+      )}
+      {vigente && (
+        <span className="text-xs text-emerald-700">Trimestre vigente</span>
+      )}
+    </div>
+  )
 }
 
 export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
@@ -109,6 +129,7 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
                   <TableRow>
                     <TableHead className="w-[35%]">Métrica</TableHead>
                     <TableHead>Tipo</TableHead>
+                    <TableHead>Trimestre EPH</TableHead>
                     <TableHead>Archivo de Origen</TableHead>
                     <TableHead>Escala de filtro</TableHead>
                     <TableHead className="text-right">Activa</TableHead>
@@ -117,7 +138,7 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
                 <TableBody>
                   {metricas.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                         No se encontraron métricas. Sube un archivo para generarlas.
                       </TableCell>
                     </TableRow>
@@ -127,6 +148,9 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
                         <TableCell className="font-medium">{metrica.nombre_amigable}</TableCell>
                         <TableCell>
                           <TipoMetricaBadge tipo={metrica.tipo} />
+                        </TableCell>
+                        <TableCell>
+                          <TrimestreBadge metrica={metrica} />
                         </TableCell>
                         <TableCell>
                           {metrica.archivo ? (

@@ -7,18 +7,23 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
+  FeedSocioConfig,
   FeedSocioIngestResult,
   FeedSocioPreview,
   FeedSocioPublishResult,
   FeedSocioStagingRow,
+  getFeedSocioConfig,
   getFeedSocioPreview,
   getFeedSocioStaging,
   downloadFeedSocioLatest,
   ingestFeedSocioSample,
   publishFeedSocio,
+  updateFeedSocioConfig,
   uploadFeedSocioEphTrimestre,
 } from "@/lib/api"
 
@@ -30,13 +35,19 @@ export function FeedsApisCliente() {
   const [lastError, setLastError] = useState<string | null>(null)
   const [hogarFile, setHogarFile] = useState<File | null>(null)
   const [individualFile, setIndividualFile] = useState<File | null>(null)
+  const [feedConfig, setFeedConfig] = useState<FeedSocioConfig | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const [rows, prev] = await Promise.all([getFeedSocioStaging(), getFeedSocioPreview()])
+      const [rows, prev, cfg] = await Promise.all([
+        getFeedSocioStaging(),
+        getFeedSocioPreview(),
+        getFeedSocioConfig(),
+      ])
       setStaging(rows)
       setPreview(prev)
+      setFeedConfig(cfg)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error al cargar datos"
       setLastError(message)
@@ -63,7 +74,8 @@ export function FeedsApisCliente() {
         )
       } else {
         const pub = result.publicados?.length ? result.publicados.join(", ") : result.metrica_clave
-        toast.success(`Publicado: ${result.hechos} hechos — ${pub}`)
+        const elim = result.hechos_eliminados ? ` (${result.hechos_eliminados} hechos antiguos eliminados)` : ""
+        toast.success(`Publicado: ${result.hechos} hechos — ${pub}${elim}`)
       }
       await refresh()
     } catch (err) {
@@ -86,6 +98,26 @@ export function FeedsApisCliente() {
   }
 
   const indicadores = [...new Set(staging.map((r) => r.indicador_clave))].sort()
+  const stagingPeriodo = staging[0]?.fecha_dato
+    ? (() => {
+        const d = new Date(staging[0].fecha_dato)
+        const t = Math.floor(d.getMonth() / 3) + 1
+        return `${d.getFullYear()}-T${t}`
+      })()
+    : null
+
+  const onConfigToggle = async (checked: boolean) => {
+    setFeedConfig((c) => (c ? { ...c, borrar_trimestre_anterior_al_publicar: checked } : c))
+    try {
+      const cfg = await updateFeedSocioConfig(checked)
+      setFeedConfig(cfg)
+      toast.success(checked ? "Se borrarán trimestres anteriores al publicar" : "Configuración actualizada")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Error al guardar configuración"
+      toast.error(message)
+      await refresh()
+    }
+  }
 
   return (
     <div className="flex h-screen flex-col">
@@ -168,6 +200,33 @@ export function FeedsApisCliente() {
                     onChange={(e) => setIndividualFile(e.target.files?.[0] ?? null)}
                   />
                 </label>
+              </div>
+              <div className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2">
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="borrar-trimestre-anterior"
+                    checked={feedConfig?.borrar_trimestre_anterior_al_publicar ?? false}
+                    disabled={busy !== null || loading}
+                    onCheckedChange={(v) => onConfigToggle(v === true)}
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="borrar-trimestre-anterior" className="text-sm font-medium leading-snug">
+                      Borrar trimestre anterior al publicar nuevas
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Al publicar, elimina hechos de trimestres previos para cada métrica EPH (evita mezclar en mapa).
+                    </p>
+                  </div>
+                </div>
+                {feedConfig?.trimestre_referencia && (
+                  <p className="text-xs text-muted-foreground">
+                    Trimestre de referencia (último ingest):{" "}
+                    <span className="font-medium text-foreground">{feedConfig.trimestre_referencia}</span>
+                    {stagingPeriodo && stagingPeriodo !== feedConfig.trimestre_referencia && (
+                      <span className="text-amber-700"> · Borrador: {stagingPeriodo}</span>
+                    )}
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-3">
                 <Button

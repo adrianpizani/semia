@@ -77,6 +77,10 @@ class Metrica(BaseModel):
     tipo: TipoMetrica # Campo añadido
     escala_rango: Literal["log", "linear"] | None = None
     archivo: ArchivoForMetrica | None
+    # Feed EPH trimestral (calculado al listar; null en métricas no-EPH)
+    periodo_publicado: str | None = None
+    trimestre_referencia: str | None = None
+    es_trimestre_vigente: bool | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -236,6 +240,15 @@ class FeedSocioPreview(BaseModel):
     indicador_clave: str
 
 
+class FeedSocioConfig(BaseModel):
+    borrar_trimestre_anterior_al_publicar: bool = False
+    trimestre_referencia: str | None = None
+
+
+class FeedSocioConfigUpdate(BaseModel):
+    borrar_trimestre_anterior_al_publicar: bool
+
+
 class FeedSocioPublishResult(BaseModel):
     hechos: int
     fallidas: int
@@ -244,4 +257,6 @@ class FeedSocioPublishResult(BaseModel):
     archivo_id: int
     log: str
     publicados: list[str] | None = None
+    hechos_eliminados: int | None = None
+    periodo: str | None = None
     error: str | None = None

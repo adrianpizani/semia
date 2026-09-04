@@ -34,6 +34,9 @@ export interface Metrica {
     id: number;
     nombre_visible: string;
   };
+  periodo_publicado?: string | null;
+  trimestre_referencia?: string | null;
+  es_trimestre_vigente?: boolean | null;
 }
 
 export interface GenericData {

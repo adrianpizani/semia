@@ -360,8 +360,33 @@ export interface FeedSocioPublishResult {
   archivo_id: number
   log: string
   publicados?: string[]
+  hechos_eliminados?: number
+  periodo?: string
   error?: string
 }
+
+export interface FeedSocioConfig {
+  borrar_trimestre_anterior_al_publicar: boolean
+  trimestre_referencia?: string | null
+}
+
+export const getFeedSocioConfig = async (): Promise<FeedSocioConfig> => {
+  const response = await apiFetch('/feeds/socio/config');
+  await throwIfNotOk(response, 'No se pudo cargar la configuración del feed');
+  return await response.json();
+};
+
+export const updateFeedSocioConfig = async (
+  borrar_trimestre_anterior_al_publicar: boolean,
+): Promise<FeedSocioConfig> => {
+  const response = await apiFetch('/feeds/socio/config', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ borrar_trimestre_anterior_al_publicar }),
+  });
+  await throwIfNotOk(response, 'No se pudo actualizar la configuración');
+  return await response.json();
+};
 
 export const getFeedSocioStaging = async (): Promise<FeedSocioStagingRow[]> => {
   const response = await apiFetch('/feeds/socio/staging');
