@@ -5,7 +5,7 @@ import unicodedata
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import models
@@ -235,11 +235,19 @@ async def preview_publish(
     }
 
 
+async def _ensure_eph_reference(db: AsyncSession) -> None:
+    """Garantiza catálogo aglomerado_eph + pesos antes de insertar staging."""
+    from scripts.seed_eph_reference import ensure_seeded
+
+    await ensure_seeded(db)
+
 async def _commit_eph_staging(db: AsyncSession, result: dict) -> dict:
     from services.eph_microdata_service import EPH_INDICATORS
 
     if result.get("error"):
         return {"inserted": 0, "skipped": 0, "error": result["error"]}
+
+    await _ensure_eph_reference(db)
 
     indicadores = list(EPH_INDICATORS.keys())
     await db.execute(
