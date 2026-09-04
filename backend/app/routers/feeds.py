@@ -7,6 +7,8 @@ from database import get_db
 from dependencies import require_admin
 from models import FeedSocioEstado
 from schemas import (
+    FeedSocioConfig,
+    FeedSocioConfigUpdate,
     FeedSocioIngestResult,
     FeedSocioPreview,
     FeedSocioPublishResult,
@@ -14,12 +16,14 @@ from schemas import (
 )
 from services.eph_microdata_service import EPH_INDICATORS
 from services.feed_socio_service import (
+    get_or_create_feed_socio_config,
     ingest_eph_latest,
     ingest_eph_trimestre,
     list_staging,
     preview_publish,
     publish_all_staging,
     publish_staging,
+    update_feed_socio_config,
 )
 
 router = APIRouter(
@@ -50,6 +54,31 @@ def _resolve_eph_sample() -> tuple[Path, Path]:
             "Faltan usu_hogar_T126.txt y/o usu_individual_T126.txt en data/ (montado en /data en Docker)"
         )
     return hogar, ind
+
+
+@router.get("/socio/config", response_model=FeedSocioConfig)
+async def get_socio_config(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    cfg = await get_or_create_feed_socio_config(db)
+    return FeedSocioConfig(
+        borrar_trimestre_anterior_al_publicar=cfg.borrar_trimestre_anterior_al_publicar,
+        trimestre_referencia=cfg.trimestre_referencia,
+    )
+
+
+@router.patch("/socio/config", response_model=FeedSocioConfig)
+async def patch_socio_config(
+    body: FeedSocioConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    cfg = await update_feed_socio_config(db, body.borrar_trimestre_anterior_al_publicar)
+    return FeedSocioConfig(
+        borrar_trimestre_anterior_al_publicar=cfg.borrar_trimestre_anterior_al_publicar,
+        trimestre_referencia=cfg.trimestre_referencia,
+    )
 
 
 @router.get("/socio/indicadores")

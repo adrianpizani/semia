@@ -147,4 +147,14 @@ class FeedSocioStaging(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     aglomerado = relationship("AglomeradoEph", back_populates="staging")
+
+
+class FeedSocioConfig(Base):
+    """Configuración singleton (id=1) del feed socioeconómico."""
+
+    __tablename__ = "feed_socio_config"
+
+    id = Column(Integer, primary_key=True)
+    borrar_trimestre_anterior_al_publicar = Column(Boolean, default=False, nullable=False)
+    trimestre_referencia = Column(String, nullable=True)
     

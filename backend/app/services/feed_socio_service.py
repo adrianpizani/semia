@@ -9,7 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import models
-from models import EstadoProcesamiento, FeedSocioEstado, TipoMetrica
+from models import EstadoProcesamiento, FeedSocioConfig, FeedSocioEstado, TipoMetrica
 
 INDICADOR_POBREZA = "pobreza_eph_indec_pct"
 INDICADOR_POBREZA_AMIGABLE = "Pobreza EPH (INDEC %)"
@@ -22,6 +22,41 @@ POVERTY_WIDE_COLUMNS: dict[str, int] = {
     "poblacion_pobre_pct_bahia_blanca_cerri_continua": 3,
     "poblacion_pobre_pct_san_nicolas_villa_constitucion_continua": 38,
 }
+
+
+def fecha_to_periodo(fecha: date) -> str:
+    trimestre = {1: 1, 4: 2, 7: 3, 10: 4}.get(fecha.month, 1)
+    return f"{fecha.year}-T{trimestre}"
+
+
+async def get_or_create_feed_socio_config(db: AsyncSession) -> FeedSocioConfig:
+    result = await db.execute(select(FeedSocioConfig).where(FeedSocioConfig.id == 1))
+    cfg = result.scalar_one_or_none()
+    if not cfg:
+        cfg = FeedSocioConfig(id=1, borrar_trimestre_anterior_al_publicar=False)
+        db.add(cfg)
+        await db.commit()
+        await db.refresh(cfg)
+    return cfg
+
+
+async def update_feed_socio_config(
+    db: AsyncSession,
+    borrar_trimestre_anterior_al_publicar: bool,
+) -> FeedSocioConfig:
+    cfg = await get_or_create_feed_socio_config(db)
+    cfg.borrar_trimestre_anterior_al_publicar = borrar_trimestre_anterior_al_publicar
+    await db.commit()
+    await db.refresh(cfg)
+    return cfg
+
+
+async def _set_trimestre_referencia(db: AsyncSession, periodo: str | None) -> None:
+    if not periodo:
+        return
+    cfg = await get_or_create_feed_socio_config(db)
+    cfg.trimestre_referencia = periodo
+    await db.commit()
 
 
 def _normalize_text(text: str) -> str:
@@ -226,6 +261,8 @@ async def _commit_eph_staging(db: AsyncSession, result: dict) -> dict:
         )
 
     await db.commit()
+    if result.get("periodo"):
+        await _set_trimestre_referencia(db, result["periodo"])
     out = {
         "inserted": result["inserted"],
         "skipped": 0,
@@ -258,7 +295,10 @@ async def ingest_eph_latest(db: AsyncSession) -> dict:
     return await _commit_eph_staging(db, result)
 
 
-async def publish_all_staging(db: AsyncSession) -> dict:
+async def publish_all_staging(
+    db: AsyncSession,
+    delete_previous_trimestre: bool | None = None,
+) -> dict:
     """Publica todos los indicadores con borrador en staging."""
     result = await db.execute(
         select(models.FeedSocioStaging.indicador_clave)
@@ -271,18 +311,21 @@ async def publish_all_staging(db: AsyncSession) -> dict:
 
     total_hechos = 0
     total_fallidas = 0
+    total_eliminados = 0
     publicados = []
     for clave in claves:
-        r = await publish_staging(db, clave)
+        r = await publish_staging(db, clave, delete_previous_trimestre=delete_previous_trimestre)
         if r.get("error"):
             continue
         total_hechos += r["hechos"]
         total_fallidas += r["fallidas"]
+        total_eliminados += r.get("hechos_eliminados", 0)
         publicados.append(clave)
 
     return {
         "hechos": total_hechos,
         "fallidas": total_fallidas,
+        "hechos_eliminados": total_eliminados,
         "publicados": publicados,
         "metrica_clave": ", ".join(publicados),
         "metrica_id": 0,
@@ -295,6 +338,7 @@ async def publish_staging(
     db: AsyncSession,
     indicador_clave: str = INDICADOR_POBREZA,
     nombre_amigable: str | None = None,
+    delete_previous_trimestre: bool | None = None,
 ) -> dict:
     """Expande staging aglomerado → hechos_datos por partido (mismo % por aglomerado)."""
     from services.eph_microdata_service import EPH_INDICATORS
@@ -314,6 +358,13 @@ async def publish_staging(
     staging_rows = staging_result.scalars().all()
     if not staging_rows:
         return {"error": "No hay borradores para publicar", "hechos": 0}
+
+    fecha_vigente = staging_rows[0].fecha_dato
+    periodo_vigente = fecha_to_periodo(fecha_vigente)
+
+    if delete_previous_trimestre is None:
+        cfg = await get_or_create_feed_socio_config(db)
+        delete_previous_trimestre = cfg.borrar_trimestre_anterior_al_publicar
 
     agl_result = await db.execute(select(models.AglomeradoEph))
     agl_by_cod = {a.codigo: a for a in agl_result.scalars().all()}
@@ -357,6 +408,16 @@ async def publish_staging(
     else:
         metric.archivo_id = archivo.id
 
+    hechos_eliminados = 0
+    if delete_previous_trimestre:
+        del_result = await db.execute(
+            delete(models.Hechos_Datos).where(
+                models.Hechos_Datos.metrica_id == metric.id,
+                models.Hechos_Datos.fecha_dato != fecha_vigente,
+            )
+        )
+        hechos_eliminados = del_result.rowcount or 0
+
     hechos_count = 0
     fallidas = 0
     log_lines: list[str] = []
@@ -389,6 +450,7 @@ async def publish_staging(
                     dimension_extra={
                         "origen": origen,
                         "indicador": indicador_clave,
+                        "periodo": periodo_vigente,
                         "aglomerado_cod": staging.aglomerado_cod,
                         "aglomerado_nombre": agl.nombre if agl else None,
                         "imputado_desde_aglomerado": imputado,
@@ -403,11 +465,16 @@ async def publish_staging(
     archivo.filas_fallidas = fallidas
     archivo.log_procesamiento = "\n".join(log_lines) if log_lines else "OK"
 
+    cfg = await get_or_create_feed_socio_config(db)
+    cfg.trimestre_referencia = periodo_vigente
+
     await db.commit()
 
     return {
         "hechos": hechos_count,
         "fallidas": fallidas,
+        "hechos_eliminados": hechos_eliminados,
+        "periodo": periodo_vigente,
         "metrica_id": metric.id,
         "metrica_clave": metric.nombre_clave,
         "archivo_id": archivo.id,
