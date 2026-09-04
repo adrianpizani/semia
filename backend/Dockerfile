@@ -47,10 +47,9 @@ COPY app/ ./
 COPY alembic.ini ./alembic.ini
 COPY migrations ./migrations
 
-# GeoJSON de seed (partidos + circuitos). Los scripts import_geojson /
-# import_circuitos leen /app/static/*.geojson. En prod no hay bind-mount,
-# así que tienen que ir en la imagen. En dev, docker-compose.yml monta
-# ./backend/static encima de este directorio.
+# GeoJSON de seed (partidos + circuitos) + CSV de referencia EPH.
+# Los scripts import_geojson / import_circuitos leen /app/static/*.geojson.
+# seed_eph_reference lee /app/static/reference/*.csv. En prod no hay bind-mount.
 COPY static ./static
 
 # Entrypoint fuera de /app: en dev el bind-mount de ./backend/app tapa /app

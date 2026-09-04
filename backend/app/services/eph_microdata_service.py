@@ -42,7 +42,11 @@ EPH_INDICATORS: dict[str, dict[str, Any]] = {
 
 def _ref_candidates(filename: str) -> list[Path]:
     script = Path(__file__).resolve()
-    candidates: list[Path] = [Path(f"/data/reference/{filename}")]
+    candidates: list[Path] = [
+        Path(f"/data/reference/{filename}"),
+        Path(f"/app/static/reference/{filename}"),
+        script.parent.parent / "static" / "reference" / filename,
+    ]
     for depth in (3, 2):
         try:
             candidates.append(script.parents[depth] / "data" / "reference" / filename)
