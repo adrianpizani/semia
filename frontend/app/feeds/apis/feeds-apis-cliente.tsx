@@ -215,6 +215,11 @@ export function FeedsApisCliente() {
                     </Label>
                     <p className="text-xs text-muted-foreground">
                       Al publicar, elimina hechos de trimestres previos para cada métrica EPH (evita mezclar en mapa).
+                      También editable en{" "}
+                      <Link href="/configuracion" className="text-primary underline-offset-2 hover:underline">
+                        Configuración → Feeds
+                      </Link>
+                      .
                     </p>
                   </div>
                 </div>

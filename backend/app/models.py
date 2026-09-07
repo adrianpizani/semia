@@ -1,5 +1,19 @@
 import enum
-from sqlalchemy import Column, Integer, String, Numeric, Date, ForeignKey, JSON, func, Enum, Text, Boolean, DateTime
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Numeric,
+    Date,
+    ForeignKey,
+    JSON,
+    func,
+    Enum,
+    Text,
+    Boolean,
+    DateTime,
+    Table,
+)
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geometry
 from database import Base
@@ -150,11 +164,73 @@ class FeedSocioStaging(Base):
 
 
 class FeedSocioConfig(Base):
-    """Configuración singleton (id=1) del feed socioeconómico."""
+    """Legacy singleton EPH — preferir workspace_config.document.feeds.socio.
+
+    Se mantiene por compatibilidad de migraciones; la app lee/escribe el hub JSON.
+    """
 
     __tablename__ = "feed_socio_config"
 
     id = Column(Integer, primary_key=True)
     borrar_trimestre_anterior_al_publicar = Column(Boolean, default=False, nullable=False)
     trimestre_referencia = Column(String, nullable=True)
+
+
+class WorkspaceConfig(Base):
+    """Singleton (id=1): documento JSON de configuración del workspace."""
+
+    __tablename__ = "workspace_config"
+
+    id = Column(Integer, primary_key=True)
+    document = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+feed_web_item_tags = Table(
+    "feed_web_item_tags",
+    Base.metadata,
+    Column("item_id", Integer, ForeignKey("feed_web_items.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("feed_web_tags.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class FeedSource(Base):
+    __tablename__ = "feed_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String, nullable=False)
+    url = Column(String, nullable=False, unique=True)
+    activa = Column(Boolean, default=True, nullable=False, index=True)
+    ultimo_fetch_at = Column(DateTime(timezone=True), nullable=True)
+    ultimo_error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    items = relationship("FeedWebItem", back_populates="source", cascade="all, delete-orphan")
+
+
+class FeedWebItem(Base):
+    __tablename__ = "feed_web_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_id = Column(Integer, ForeignKey("feed_sources.id", ondelete="CASCADE"), nullable=False, index=True)
+    titulo = Column(String, nullable=False)
+    url = Column(String, nullable=False)
+    resumen = Column(Text, nullable=True)
+    publicado_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    guid = Column(String, nullable=False, unique=True)
+    fetched_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    source = relationship("FeedSource", back_populates="items")
+    tags = relationship("FeedWebTag", secondary=feed_web_item_tags, back_populates="items")
+
+
+class FeedWebTag(Base):
+    __tablename__ = "feed_web_tags"
+
+    id = Column(Integer, primary_key=True, index=True)
+    texto = Column(String, nullable=False)
+    tipo = Column(String, nullable=True, index=True)  # municipio | partido | tema | otro
+    normalized = Column(String, nullable=False, unique=True)
+
+    items = relationship("FeedWebItem", secondary=feed_web_item_tags, back_populates="tags")
     

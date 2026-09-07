@@ -9,10 +9,12 @@ type FeedShellProps = {
   description: string
   children: ReactNode
   actions?: ReactNode
+  /** When true, shows a live badge instead of the demo badge. */
+  live?: boolean
 }
 
-/** Shell compartido para las vistas mock de feeds (Social / Web / IA). */
-export function FeedShell({ title, description, children, actions }: FeedShellProps) {
+/** Shell compartido para las vistas de feeds (Social / Web / IA). */
+export function FeedShell({ title, description, children, actions, live = false }: FeedShellProps) {
   return (
     <div className="flex h-screen flex-col">
       <div className="border-b border-primary/15 bg-primary/[0.07] px-6 py-4">
@@ -20,9 +22,15 @@ export function FeedShell({ title, description, children, actions }: FeedShellPr
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold">{title}</h1>
-              <Badge variant="secondary" className="bg-amber-500/15 text-amber-800 hover:bg-amber-500/15">
-                Próximamente · demo
-              </Badge>
+              {live ? (
+                <Badge variant="secondary" className="bg-emerald-500/15 text-emerald-800 hover:bg-emerald-500/15">
+                  PoC · RSS
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="bg-amber-500/15 text-amber-800 hover:bg-amber-500/15">
+                  Próximamente · demo
+                </Badge>
+              )}
             </div>
             <p className="max-w-2xl text-sm text-muted-foreground">{description}</p>
           </div>
