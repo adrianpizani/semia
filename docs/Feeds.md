@@ -3,10 +3,18 @@
 Semia no agrega tres apps aparte: los feeds **generan señales** que se materializan como **métricas** y se consumen en el **mapa** y el **análisis tabular**, igual que un CSV.
 
 ```
-Feed (Social / Web / IA)  →  agregación + revisión  →  métrica en catálogo  →  mapa / análisis
+Feed (Social / Web / IA / EPH)  →  agregación + revisión  →  métrica en catálogo  →  mapa / análisis
 ```
 
-**Estado actual:** vistas mock en `/feeds/social`, `/feeds/web`, `/feeds/ia` (Próximamente). **Feed socioeconómico (INDEC)** es el primer conector real — plan por etapas en [Feed_Socioeconomico.md](./Feed_Socioeconomico.md). Configuración de todos los conectores converge en **Feed APIs** (tab en Configuración).
+**Estado actual:**
+- **EPH / socioeconómico:** primer conector **real** (operativo) — [Feed_Socioeconomico.md](./Feed_Socioeconomico.md).
+- **Web / medios:** **PoC fase 1** (RSS → titulares → bolsón de tags → `/feeds/web`). Sin métrica al mapa todavía.
+- **Social / IA:** mock / horizonte.
+- **UI Feed APIs** (`/feeds/apis`): hoy centrada en EPH → hay que **simplificar a hub de conectores** (EPH es una card/tab, no toda la pantalla).
+
+Dirección de producto: [`AVANCE.md`](./AVANCE.md) § *Dirección producto — reunión cliente*.
+
+Configuración de conectores converge en **Feed APIs** + hub **Configuración** ([CONFIG.md](./CONFIG.md)).
 
 ---
 
@@ -25,14 +33,31 @@ Feed (Social / Web / IA)  →  agregación + revisión  →  métrica en catálo
 
 ## 2. Feed web
 
-**Qué es:** titulares y notas de portales (RSS, APIs editoriales o scraping acotado).
+**Qué es:** titulares y notas de portales vía **RSS** (fase 1 del PoC).
 
-**Salida hacia Semia (ejemplos):**
+### Fase 1 (implementada) — recolección y tags
+
+Alcance cerrado a propósito:
+
+1. Fuentes en tabla **`feed_sources`** (CRUD en Configuración → Web).
+2. Fetch manual **«Actualizar ahora»** (`POST /api/v1/feeds/web/fetch`) con `feedparser` + deduplicación por GUID.
+3. Ítems en **`feed_web_items`**; retención según `feeds.web.retention_days`.
+4. Etiquetado por **diccionario** (municipio / partido / tema) → bolsón en `feed_web_tags` + vínculo ítem–tag. Sin LLM.
+5. Pantalla **`/feeds/web`**: lista real, filtros por portal y por **tags ya descubiertos**, resumen (conteo, fuentes activas, última actualización, top tags).
+6. Políticas en `workspace_config.document.feeds.web` (`fetch_interval_min`, `retention_days`, `classify_territorial`) — live paths en el hub.
+
+**Modelo de sentido = bolsón de tags**, no una sola dimensión fija. Un titular puede llevar varios tags; los filtros de la UI solo ofrecen etiquetas que ya aparecieron en el corpus.
+
+**Qué queda fuera (fase 2+):** publicar hechos al mapa / Gestión de métricas; cron de producción; scraping HTML / Google News; IA para etiquetar; sentimiento o ranking de “importancia”.
+
+**Métrica futura (solo diseño):** al cliente le interesa “de qué se habla” en los municipios. Candidatos naturales cuando haya datos: **ocurrencia** (conteos) o **importancia** (ponderación por fuente/recencia). Se define con evidencia real.
+
+**API (prefijo `/api/v1/feeds/web`):** sources CRUD, `POST /fetch`, `GET /items`, `GET /tags`, `GET /summary`.
+
+**Salida hacia Semia (fase 2, ejemplos):**
 - Cobertura mediática 7d por municipio o tema
 - Menciones por partido en prensa
 - Índice de “presencia en agenda” por territorio
-
-**UI mock:** lista de noticias + filtros por portal/tema.
 
 **Nota:** preferir **RSS/API oficial**; scraping solo donde no haya alternativa, siempre con fuente + fecha.
 
@@ -48,28 +73,13 @@ Feed (Social / Web / IA)  →  agregación + revisión  →  métrica en catálo
 | **Google News RSS** | Medio sin feed propio o cobertura local | Bajo |
 | **Scraping de listados** | Solo si no hay RSS ni alternativa | Medio (mantenimiento) |
 
-**Portales con RSS verificado (ago 2026):**
+**Portales con RSS verificado (ago 2026) — seed PoC:** Clarín Política, La Nación, El Cronista, Perfil, Ámbito (más los listados en research histórico: Infobae, Crónica, LPO, etc.).
 
-| Portal | Sección sugerida |
-|--------|------------------|
-| Clarín | Política |
-| La Nación | Política / general |
-| Infobae | Política / general |
-| Perfil | Política |
-| Ámbito | Política |
-| Crónica | Política |
-| Cronista | Política |
-| La Política Online (LPO) | General |
-| iProfesional | General |
-| Provincial News | General (PBA) |
+**Sin RSS claro hoy:** Página/12, El Destape, Minuto Uno; varios medios locales — ahí entra Google News por sitio o scrape acotado (fuera de fase 1).
 
-**Sin RSS claro hoy:** Página/12, El Destape, Minuto Uno; varios medios locales (Provincia Noticias, El Provincial, etc.) — ahí entra Google News por sitio o scrape acotado del listado de titulares.
+**Atajo útil — Google News:** un mismo formato RSS para buscar por tema (*“Buenos Aires provincia política”*) o por dominio (*`site:provincianoticias.com.ar`*), útil para cubrir medios chicos sin feed propio (fase posterior).
 
-**Atajo útil — Google News:** un mismo formato RSS para buscar por tema (*“Buenos Aires provincia política”*) o por dominio (*`site:provincianoticias.com.ar`*), útil para cubrir medios chicos sin feed propio.
-
-**Propuesta v1:** lista curada de ~8–12 fuentes (grandes medios política + 1–2 provinciales + Google News para huecos) → clasificar titulares por partido/municipio → agregar a métricas de cobertura mediática en el mapa.
-
-**Qué necesitamos del cliente:** qué portales priorizar, si hay medios locales imprescindibles, y qué partidos/municipios/temas monitorear en la primera versión.
+**Qué necesitamos del cliente:** qué portales priorizar, si hay medios locales imprescindibles, y qué partidos/municipios/temas monitorear al pasar a métrica.
 
 ---
 

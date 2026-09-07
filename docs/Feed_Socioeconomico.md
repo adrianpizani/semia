@@ -1,8 +1,12 @@
 # Feed socioeconómico — plan por etapas
 
-Plan acotado para el **primer feed real**: INDEC / EPH por **aglomerado**, con ponderación a partido y visualización clara. Sin microdatos Semia hasta cerrar las etapas 1–4.
+Plan acotado para el **primer feed real**: INDEC / EPH por **aglomerado**, con ponderación a partido y visualización clara.
 
-**Documentos relacionados:** [Feeds.md](./Feeds.md) (modelo feed → métrica), [CONFIG.md](./CONFIG.md).
+**Documentos relacionados:** [Feeds.md](./Feeds.md) (modelo feed → métrica), [CONFIG.md](./CONFIG.md), [AVANCE.md](./AVANCE.md) (dirección post-demo cliente).
+
+**Feedback cliente (4-sep-2026):** el conector EPH está bien encaminado. Limitación aceptada: datos **consolidados por aglomerado** (mismo % en partidos del cluster). El cliente se compromete a conseguir **más y mejores datos**; cuando lleguen, mejorar desagregación (v2). Mientras tanto no bloquear el resto del producto.
+
+**UI:** la ingesta EPH vive en Feed APIs pero **no debe monopolizar** esa pantalla — EPH es un conector entre varios (ver plan en AVANCE §2).
 
 ---
 
@@ -11,19 +15,17 @@ Plan acotado para el **primer feed real**: INDEC / EPH por **aglomerado**, con p
 Los feeds externos no son solo pantallas mock: convergen en **Feed APIs** — configuración y orquestación de conectores.
 
 ```
-Feed APIs (config + jobs)  →  conector (Socio / Web / IA / INDEC…)  →  staging  →  métrica  →  mapa / análisis
+Feed APIs (hub de conectores)  →  conector (EPH / Web / Social / IA…)  →  staging  →  métrica  →  mapa / análisis
 ```
 
 | Conector | Estado | Qué configura en Feed APIs |
 |----------|--------|---------------------------|
-| **Socioeconómico (INDEC)** | **Primero — este doc** | Fuentes CSV/series, homologación aglomerado, frecuencia trimestral, publicación |
+| **Socioeconómico (INDEC/EPH)** | **Operativo** | Descarga pyeph, upload TXT, publicar, borrar trimestre anterior |
+| **Medios / Web** | **Próximo piloto** | Fuentes RSS, intervalo, diccionario territorio |
 | Social | Mock | OAuth, keywords, polling |
-| Web | Mock | RSS, Google News |
 | IA | Mock | Modelo, confianza, métricas elegibles |
 
-**UI propuesta:** sección **Feed APIs** en Configuración (o `/feeds/apis`) con tab por conector. Socioeconómico es el primero que **persiste** config y dispara ingest real.
-
-**Hoy:** Configuración tiene mock; Feeds Social/Web/IA son demo. **Siguiente:** tab Feed APIs con Socioeconómico operativo; el resto se vuelca ahí cuando exista backend.
+**Hoy:** EPH persiste staging + `feed_socio_config`. Configuración global sigue mockeada en parte — unificar según [CONFIG.md](./CONFIG.md).
 
 ---
 

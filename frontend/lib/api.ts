@@ -370,6 +370,30 @@ export interface FeedSocioConfig {
   trimestre_referencia?: string | null
 }
 
+export interface WorkspaceConfigResponse {
+  document: Record<string, unknown>
+  live_paths: string[]
+  updated_at?: string | null
+}
+
+export const getWorkspaceConfig = async (): Promise<WorkspaceConfigResponse> => {
+  const response = await apiFetch('/workspace/config');
+  await throwIfNotOk(response, 'No se pudo cargar la configuración del workspace');
+  return await response.json();
+};
+
+export const patchWorkspaceConfig = async (
+  document: Record<string, unknown>,
+): Promise<WorkspaceConfigResponse> => {
+  const response = await apiFetch('/workspace/config', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ document }),
+  });
+  await throwIfNotOk(response, 'No se pudo guardar la configuración');
+  return await response.json();
+};
+
 export const getFeedSocioConfig = async (): Promise<FeedSocioConfig> => {
   const response = await apiFetch('/feeds/socio/config');
   await throwIfNotOk(response, 'No se pudo cargar la configuración del feed');
@@ -440,6 +464,123 @@ export const publishFeedSocio = async (): Promise<FeedSocioPublishResult> => {
     credentials: 'include',
   });
   await throwIfNotOk(response, 'Error al publicar');
+  return await response.json();
+};
+
+// --- Feed web (RSS) ---
+
+export interface FeedSource {
+  id: number
+  nombre: string
+  url: string
+  activa: boolean
+  ultimo_fetch_at?: string | null
+  ultimo_error?: string | null
+}
+
+export interface FeedWebTag {
+  id: number
+  texto: string
+  tipo?: string | null
+  count?: number | null
+}
+
+export interface FeedWebItem {
+  id: number
+  titulo: string
+  url: string
+  resumen?: string | null
+  publicado_at?: string | null
+  fetched_at?: string | null
+  source_id: number
+  source_nombre: string
+  tags: FeedWebTag[]
+}
+
+export interface FeedWebFetchResult {
+  inserted: number
+  purged: number
+  classify: boolean
+  sources: Array<Record<string, unknown>>
+}
+
+export interface FeedWebSummary {
+  items_count: number
+  sources_active: number
+  ultimo_fetch_at?: string | null
+  top_tags: FeedWebTag[]
+}
+
+export const listFeedWebSources = async (): Promise<FeedSource[]> => {
+  const response = await apiFetch('/feeds/web/sources');
+  await throwIfNotOk(response, 'No se pudieron cargar las fuentes');
+  return await response.json();
+};
+
+export const createFeedWebSource = async (body: {
+  nombre: string
+  url: string
+  activa?: boolean
+}): Promise<FeedSource> => {
+  const response = await apiFetch('/feeds/web/sources', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  await throwIfNotOk(response, 'No se pudo crear la fuente');
+  return await response.json();
+};
+
+export const updateFeedWebSource = async (
+  id: number,
+  body: { nombre?: string; url?: string; activa?: boolean },
+): Promise<FeedSource> => {
+  const response = await apiFetch(`/feeds/web/sources/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  await throwIfNotOk(response, 'No se pudo actualizar la fuente');
+  return await response.json();
+};
+
+export const deleteFeedWebSource = async (id: number): Promise<void> => {
+  const response = await apiFetch(`/feeds/web/sources/${id}`, { method: 'DELETE' });
+  await throwIfNotOk(response, 'No se pudo eliminar la fuente');
+};
+
+export const fetchFeedWebNow = async (): Promise<FeedWebFetchResult> => {
+  const response = await apiFetch('/feeds/web/fetch', { method: 'POST' });
+  await throwIfNotOk(response, 'Error al actualizar feeds RSS');
+  return await response.json();
+};
+
+export const listFeedWebItems = async (params?: {
+  source_id?: number
+  tag?: string
+  limit?: number
+  offset?: number
+}): Promise<FeedWebItem[]> => {
+  const qs = new URLSearchParams();
+  if (params?.source_id != null) qs.set('source_id', String(params.source_id));
+  if (params?.tag) qs.set('tag', params.tag);
+  if (params?.limit != null) qs.set('limit', String(params.limit));
+  if (params?.offset != null) qs.set('offset', String(params.offset));
+  const suffix = qs.toString() ? `?${qs}` : '';
+  const response = await apiFetch(`/feeds/web/items${suffix}`);
+  await throwIfNotOk(response, 'No se pudieron cargar los titulares');
+  return await response.json();
+};
+
+export const listFeedWebTags = async (): Promise<FeedWebTag[]> => {
+  const response = await apiFetch('/feeds/web/tags');
+  await throwIfNotOk(response, 'No se pudieron cargar los tags');
+  return await response.json();
+};
+
+export const getFeedWebSummary = async (): Promise<FeedWebSummary> => {
+  const response = await apiFetch('/feeds/web/summary');
+  await throwIfNotOk(response, 'No se pudo cargar el resumen');
   return await response.json();
 };
 

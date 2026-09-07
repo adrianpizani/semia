@@ -4,10 +4,117 @@ Bitácora viva: estado, bugs, decisiones y roadmap. No es la guía de uso ni el 
 
 | Archivo | Rol |
 |---------|-----|
-| [`README.md`](./README.md) | Cómo correr el proyecto (usuario) |
+| [`../README.md`](../README.md) | Cómo correr el proyecto (usuario) |
 | [`DEPLOY.md`](./DEPLOY.md) | Plan y runbook del deploy AWS |
-| [`ANALISIS.md`](./ANALISIS.md) | Plan de la vista tabular `/analisis` (no implementado) |
+| [`ANALISIS.md`](./ANALISIS.md) | Plan de la vista tabular `/analisis` |
+| [`CONFIG.md`](./CONFIG.md) | Plan de configuración unificada |
+| [`Feeds.md`](./Feeds.md) | Modelo feed → métrica (social / web / IA) |
+| [`Feed_Socioeconomico.md`](./Feed_Socioeconomico.md) | Conector EPH / INDEC |
 | este archivo | Qué se hizo, qué falta, por qué |
+
+---
+
+## Dirección producto — reunión cliente (4-sep-2026)
+
+Demo con el cliente. Orientación consolidada para el próximo ciclo.
+
+### Feedback inmediato
+
+| Tema | Veredicto |
+|------|-----------|
+| **Feed EPH (INDEC)** | Acertado. Queda como primer conector real. |
+| Datos por aglomerado | Limitación conocida: consolidados a aglomerado, no partido real. El cliente se compromete a conseguir **más y mejores datos**; mejorar desagregación cuando lleguen. |
+| Idea de feeds de medios | Le encantó. Priorizar un piloto de **feed web/medios**. |
+
+### Plan de trabajo (próximo ciclo)
+
+Orden sugerido: **1 → 2 → 4**, con **5** en paralelo como estudio de impacto (sin implementar aún).
+
+#### 1. Configuración unificada
+
+**Problema:** hoy no es claro dónde vive cada setting. Parte persiste (`metricas`, `feed_socio_config`), parte está mockeada en `/configuracion`, parte vive en pantallas sueltas (`/metricas`, `/feeds/apis`, preferencias de mapa en `sessionStorage`).
+
+**Objetivo:** un solo lugar mental y de UI — **Configuración** — con secciones reales + mocks solo donde aún no hay backend.
+
+| Hoy | Destino |
+|-----|---------|
+| `/configuracion` casi todo mock | Tabs reales cuando exista BD; mocks etiquetados “próximamente” |
+| `feed_socio_config` solo vía Feed APIs | También visible/editable desde Configuración → Feeds |
+| Preferencias de mapa en `sessionStorage` | `user_preferences` (BD o JSON por usuario) |
+| Defaults de equipo inexistentes | `workspace_config` (JSON singleton / tabla) |
+
+Detalle de capas y pantallas: [`CONFIG.md`](./CONFIG.md).
+
+**Entregable v1 de unificación (acotado):**
+1. ~~Inventario en UI~~ + hub `workspace_config` (7-sep-2026).
+2. ~~Cablear EPH~~ (`feeds.socio` + Configuración → Feeds + fachada `/feeds/socio/config`).
+3. ~~Tabla/modelo `workspace_config`~~ + `GET/PATCH /workspace/config` + `LIVE_PATHS` + deep-merge.
+4. Siguiente: ir marcando paths como live al cablear mapa/medios (sin nuevas tablas `*_config`).
+
+#### 2. Feed APIs como hub de conectores (simplificar pantalla EPH)
+
+**Problema:** `/feeds/apis` hoy es casi “la pantalla de EPH”. Funciona, pero EPH es **un** conector; vendrán más APIs.
+
+**Objetivo:** Feed APIs = **lista de conectores** + config común; cada conector tiene su panel (EPH, Web, futuro Social…).
+
+```
+Feed APIs
+├── Socioeconómico (EPH)   ← operativo hoy
+├── Medios / Web           ← próximo piloto
+├── Social                 ← mock / después
+└── IA                     ← mock / horizonte
+```
+
+**Cambios de UX (sin romper el flujo EPH):**
+- Cabecera: “Conectores” + cards o tabs por fuente.
+- EPH: acciones compactas (descargar / upload / publicar / checkbox trimestre) en su card, no como única UI de la página.
+- Staging y publish siguen el mismo patrón staging → métrica → mapa.
+
+Detalle EPH: [`Feed_Socioeconomico.md`](./Feed_Socioeconomico.md). Modelo general: [`Feeds.md`](./Feeds.md).
+
+#### 4. Piloto feed de medios (Web / RSS)
+
+**Motivación:** el cliente valoró la idea; necesitamos **probar el ciclo completo** de un feed no-EPH (ingest → staging/agregación → métrica → mapa) con algo realista y barato.
+
+**Propuesta v1 (ver research en Feeds.md):**
+- Fuentes: 6–10 RSS de política (Clarín, LN, Infobae, … + 1–2 provinciales) y/o Google News RSS.
+- Job o botón “Actualizar ahora” en Feed APIs → Medios.
+- Clasificación simple: keywords partido / municipio (diccionario; sin LLM al inicio).
+- Salida: métrica tipo “menciones en prensa 7d” por partido (y/o por municipio cuando haya match).
+- Mismos patrones que EPH: borrador, publicar, activar en `/metricas`.
+
+**Qué pedir al cliente:** lista priorizada de portales y temas/partidos a monitorear en la primera versión.
+
+#### 5. Scope nacional — estudio de impacto (plan, no build)
+
+Hoy Semia está **anclado a PBA**: geografía seed (partidos + circuitos), electoral, EPH (5 aglomerados PBA), pesos, UI y copy.
+
+| Capa | Impacto nacional | Notas |
+|------|------------------|-------|
+| **Geografía** | **Alto** | Faltan provincias, departamentos/municipios CABA/resto, circuitos nacionales. Seed GeoJSON + `dimension_geografica` multi-nivel. |
+| **Mapa / UX** | **Alto** | Zoom por provincia, selector de jurisdicción, performance con ~2k+ municipios. |
+| **Electoral** | **Alto** | Homologación cargos/agrupaciones nacionales; archivos mucho más grandes; filtros por distrito. |
+| **EPH / socio** | **Medio** | EPH ya es nacional en microdatos; hoy filtramos PBA. Ampliar catálogo de aglomerados + pesos por provincia. |
+| **Feeds medios** | **Medio-bajo** | Las fuentes son nacionales; el costo es clasificar territorio fuera de PBA. |
+| **Auth / multi-tenant** | **Medio** | ¿Un workspace por provincia/cliente o un solo Semia nacional con permisos? |
+| **Infra / storage** | **Alto** | `hechos_datos` escala con circuitos nacionales; backups y retención (ver CONFIG §8). |
+| **Producto / copy** | **Bajo** | Reemplazar “PBA” por jurisdicción activa. |
+
+**Fases sugeridas (solo diseño hasta validar con cliente):**
+1. **N0 — Inventario:** qué datasets nacionales existen (geo IGN/INDEC, resultados oficiales, EPH).
+2. **N1 — Multi-provincia read-only:** cargar 1–2 provincias extra sin circuitos finos; selector de jurisdicción.
+3. **N2 — Electoral nacional (partido/departamento):** sin circuitos al inicio.
+4. **N3 — Circuitos / profundidad** donde el cliente pague el costo de datos y storage.
+
+**Decisión pendiente con cliente:** ¿nacional = “todo el país en un mapa” o “misma app, una jurisdicción a la vez”? La segunda baja mucho el impacto de mapa y storage.
+
+### Fuera de este ciclo (explícito)
+
+- Desagregación EPH partido-a-partido hasta que lleguen mejores datos del cliente.
+- Feed social (X/Meta) y motor IA productivos.
+- Implementar scope nacional completo.
+
+---
 
 `CLAUDE.md` se retiró (18-ago-2026): duplicaba README + esta bitácora.
 
@@ -65,7 +172,7 @@ Reemplaza y consolida los siguientes archivos previos:
 
 ## 📌 Resumen ejecutivo
 
-Semia es un dashboard de análisis político sobre la PBA con mapa interactivo. **La base técnica está consolidada** (modelo estrella, PostGIS, procesadores, auth, Alembic). Lo inmediato es el primer deploy AWS (`DEPLOY.md`); después CI/CD, UI de gestión y fuentes externas.
+Semia es un dashboard de análisis político sobre la **PBA** (con horizonte nacional en estudio). Base técnica consolidada; **Feed EPH** es el primer conector real. Próximo ciclo (post reunión 4-sep-2026): **config unificada → Feed APIs multi-conector → piloto medios → estudio scope nacional**.
 
 | Área                       | Estado actual                                                |
 |----------------------------|--------------------------------------------------------------|
@@ -73,15 +180,14 @@ Semia es un dashboard de análisis político sobre la PBA con mapa interactivo. 
 | Ingesta CSV                | 4 tipos cubiertos (electoral, socioeconómico, PBG, genérico) |
 | Mapa interactivo           | Funcional, con doble capa (municipios + circuitos)            |
 | Filtros cruzados           | Categoría (partidos) + rango (PBG)                            |
-| Reportes gráficos          | Parcial — `/graficos` tiene componentes dinámicos y mocks     |
+| Feed EPH / INDEC           | Operativo (staging → publicar → métricas; pyeph)              |
+| Feed APIs UI               | Funcional pero centrada en EPH → simplificar a hub            |
+| Configuración              | Mock + settings dispersos → unificar                          |
+| Feed medios                | Mock; piloto RSS priorizado                                   |
 | Autenticación              | Listo — JWT + cookie httpOnly, roles admin/viewer             |
-| Schema (Alembic)           | Listo — entrypoint corre `upgrade head`                       |
-| Docker producción          | Listo en el repo (`docker-compose.prod.yml`)                  |
-| Deploy AWS                 | Pendiente — ver `DEPLOY.md`                                   |
-| CI/CD                      | Pendiente (después del deploy manual)                         |
-| Ingesta de redes (Listen)  | Diseñado, no implementado                                    |
-| API Meta Business          | Priorizado más adelante                                       |
-| Orientación                | Deploy AWS → CI/CD → visualización → fuentes → IA             |
+| Deploy AWS                 | En curso / ver `DEPLOY.md`                                    |
+| Scope nacional             | Estudio de impacto (no implementado)                          |
+| Orientación                | Config hub → Feeds medios → (luego) nacional / social / IA    |
 
 ---
 
@@ -565,7 +671,8 @@ Si el cliente es conservador o quiere ver resultados rápido: **A**, y en la ses
 
 ## 📝 Notas para retomar trabajo
 
-- **Levantar el stack:** [`README.md`](./README.md). Deploy AWS: [`DEPLOY.md`](./DEPLOY.md).
+- **Dirección actual:** § *Dirección producto — reunión cliente (4-sep-2026)* (arriba).
+- **Levantar el stack:** [`../README.md`](../README.md). Deploy AWS: [`DEPLOY.md`](./DEPLOY.md).
 - **Frontend usa rewrites de Next** (`/api/*` → backend). En prod `NEXT_PUBLIC_API_BASE_URL=""` (mismo origen vía nginx). `use-processors.ts` todavía pega directo a `localhost:8000` — unificar antes del corte.
 - **Modelos de procesador**: crear uno nuevo es trivial desde el modal de carga, lo que es la base del enfoque "adaptar a formatos sin código".
 - **`dimension_extra`** es el comodín para metadata que no justifica una columna propia (año, tipo de voto, fuente, etc.).

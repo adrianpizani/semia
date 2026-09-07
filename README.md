@@ -6,14 +6,16 @@ La app pide login. Roles: **admin** (carga y gestión) y **viewer** (solo lectur
 
 La portada demo del login (mapa + features) está archivada en `/login/landing` y **no se muestra** por defecto. Para previsualizarla en local: `LANDING_PREVIEW_ENABLED=true` en `.env` y abrir `/login/landing`.
 
-Otra documentación:
+Otra documentación (carpeta [`docs/`](./docs/)):
 
 | Archivo | Para qué |
 |---------|----------|
-| [`AVANCE.md`](./AVANCE.md) | Bitácora, bugs, decisiones y roadmap |
-| [`DEPLOY.md`](./DEPLOY.md) | Plan y runbook del deploy en AWS |
-| [`ANALISIS.md`](./ANALISIS.md) | Vista `/analisis` (tabla + cruce; SQL visual queda para después) |
-
+| [`docs/AVANCE.md`](./docs/AVANCE.md) | Bitácora, decisiones y roadmap (incluye dirección post-demo cliente) |
+| [`docs/DEPLOY.md`](./docs/DEPLOY.md) | Plan y runbook del deploy en AWS |
+| [`docs/ANALISIS.md`](./docs/ANALISIS.md) | Vista `/analisis` (tabla + cruce) |
+| [`docs/CONFIG.md`](./docs/CONFIG.md) | Dónde vive cada setting (unificación) |
+| [`docs/Feeds.md`](./docs/Feeds.md) | Feeds → métricas (medios, social, IA) |
+| [`docs/Feed_Socioeconomico.md`](./docs/Feed_Socioeconomico.md) | Conector EPH / INDEC |
 ---
 
 ## Requisitos

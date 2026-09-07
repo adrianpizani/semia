@@ -249,6 +249,18 @@ class FeedSocioConfigUpdate(BaseModel):
     borrar_trimestre_anterior_al_publicar: bool
 
 
+class WorkspaceConfigResponse(BaseModel):
+    document: dict
+    live_paths: list[str]
+    updated_at: str | None = None
+
+
+class WorkspaceConfigPatch(BaseModel):
+    """Deep-merge patch sobre el documento (solo las ramas enviadas)."""
+
+    document: dict
+
+
 class FeedSocioPublishResult(BaseModel):
     hechos: int
     fallidas: int
@@ -260,3 +272,60 @@ class FeedSocioPublishResult(BaseModel):
     hechos_eliminados: int | None = None
     periodo: str | None = None
     error: str | None = None
+
+# --- Feed web (RSS) ---
+
+class FeedSourceOut(BaseModel):
+    id: int
+    nombre: str
+    url: str
+    activa: bool
+    ultimo_fetch_at: str | None = None
+    ultimo_error: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FeedSourceCreate(BaseModel):
+    nombre: str
+    url: str
+    activa: bool = True
+
+
+class FeedSourceUpdate(BaseModel):
+    nombre: str | None = None
+    url: str | None = None
+    activa: bool | None = None
+
+
+class FeedWebTagOut(BaseModel):
+    id: int
+    texto: str
+    tipo: str | None = None
+    count: int | None = None
+
+
+class FeedWebItemOut(BaseModel):
+    id: int
+    titulo: str
+    url: str
+    resumen: str | None = None
+    publicado_at: str | None = None
+    fetched_at: str | None = None
+    source_id: int
+    source_nombre: str
+    tags: list[FeedWebTagOut] = []
+
+
+class FeedWebFetchResult(BaseModel):
+    inserted: int
+    purged: int
+    classify: bool
+    sources: list[dict]
+
+
+class FeedWebSummary(BaseModel):
+    items_count: int
+    sources_active: int
+    ultimo_fetch_at: str | None = None
+    top_tags: list[FeedWebTagOut] = []

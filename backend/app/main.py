@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routers import geografia, archivos, metricas, procesadores, auth, feeds
+from routers import geografia, archivos, metricas, procesadores, auth, feeds, workspace, feed_web
 
 app = FastAPI(title="Dashboard PBA Backend")
 
@@ -32,6 +32,8 @@ app.include_router(archivos.router, prefix="/api/v1")
 app.include_router(metricas.router, prefix="/api/v1")
 app.include_router(procesadores.router, prefix="/api/v1")
 app.include_router(feeds.router, prefix="/api/v1")
+app.include_router(workspace.router, prefix="/api/v1")
+app.include_router(feed_web.router, prefix="/api/v1")
 
 
 @app.get("/")

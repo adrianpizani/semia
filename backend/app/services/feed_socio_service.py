@@ -9,7 +9,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import models
-from models import EstadoProcesamiento, FeedSocioConfig, FeedSocioEstado, TipoMetrica
+from models import EstadoProcesamiento, FeedSocioEstado, TipoMetrica
+from services import workspace_config_service as wcs
 
 INDICADOR_POBREZA = "pobreza_eph_indec_pct"
 INDICADOR_POBREZA_AMIGABLE = "Pobreza EPH (INDEC %)"
@@ -24,39 +25,41 @@ POVERTY_WIDE_COLUMNS: dict[str, int] = {
 }
 
 
+class _FeedSocioSettingsView:
+    """Compat: atributos como el viejo modelo FeedSocioConfig."""
+
+    def __init__(self, data: dict):
+        self.borrar_trimestre_anterior_al_publicar = bool(
+            data.get("borrar_trimestre_anterior_al_publicar", False)
+        )
+        self.trimestre_referencia = data.get("trimestre_referencia")
+
+
 def fecha_to_periodo(fecha: date) -> str:
     trimestre = {1: 1, 4: 2, 7: 3, 10: 4}.get(fecha.month, 1)
     return f"{fecha.year}-T{trimestre}"
 
 
-async def get_or_create_feed_socio_config(db: AsyncSession) -> FeedSocioConfig:
-    result = await db.execute(select(FeedSocioConfig).where(FeedSocioConfig.id == 1))
-    cfg = result.scalar_one_or_none()
-    if not cfg:
-        cfg = FeedSocioConfig(id=1, borrar_trimestre_anterior_al_publicar=False)
-        db.add(cfg)
-        await db.commit()
-        await db.refresh(cfg)
-    return cfg
+async def get_or_create_feed_socio_config(db: AsyncSession) -> _FeedSocioSettingsView:
+    data = await wcs.get_feed_socio_settings(db)
+    return _FeedSocioSettingsView(data)
 
 
 async def update_feed_socio_config(
     db: AsyncSession,
     borrar_trimestre_anterior_al_publicar: bool,
-) -> FeedSocioConfig:
-    cfg = await get_or_create_feed_socio_config(db)
-    cfg.borrar_trimestre_anterior_al_publicar = borrar_trimestre_anterior_al_publicar
-    await db.commit()
-    await db.refresh(cfg)
-    return cfg
+) -> _FeedSocioSettingsView:
+    data = await wcs.update_feed_socio_settings(
+        db,
+        borrar_trimestre_anterior_al_publicar=borrar_trimestre_anterior_al_publicar,
+    )
+    return _FeedSocioSettingsView(data)
 
 
 async def _set_trimestre_referencia(db: AsyncSession, periodo: str | None) -> None:
     if not periodo:
         return
-    cfg = await get_or_create_feed_socio_config(db)
-    cfg.trimestre_referencia = periodo
-    await db.commit()
+    await wcs.update_feed_socio_settings(db, trimestre_referencia=periodo, set_trimestre=True)
 
 
 def _normalize_text(text: str) -> str:
@@ -473,10 +476,8 @@ async def publish_staging(
     archivo.filas_fallidas = fallidas
     archivo.log_procesamiento = "\n".join(log_lines) if log_lines else "OK"
 
-    cfg = await get_or_create_feed_socio_config(db)
-    cfg.trimestre_referencia = periodo_vigente
-
     await db.commit()
+    await _set_trimestre_referencia(db, periodo_vigente)
 
     return {
         "hechos": hechos_count,
