@@ -329,3 +329,38 @@ class FeedWebSummary(BaseModel):
     sources_active: int
     ultimo_fetch_at: str | None = None
     top_tags: list[FeedWebTagOut] = []
+
+
+class FeedWebDictEntryOut(BaseModel):
+    id: int
+    texto: str
+    alias: str
+    normalized_alias: str
+    tipo: str
+    activa: bool
+    created_at: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FeedWebDictEntryCreate(BaseModel):
+    texto: str
+    alias: str
+    tipo: str = "tema"
+    activa: bool = True
+
+
+class FeedWebDictEntryUpdate(BaseModel):
+    texto: str | None = None
+    alias: str | None = None
+    tipo: str | None = None
+    activa: bool | None = None
+
+
+class FeedWebTagAssign(BaseModel):
+    texto: str
+    tipo: str | None = None
+
+
+class FeedWebItemTagsUpdate(BaseModel):
+    tags: list[FeedWebTagAssign]

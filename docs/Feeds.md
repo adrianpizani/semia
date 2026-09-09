@@ -35,24 +35,26 @@ Configuración de conectores converge en **Feed APIs** + hub **Configuración** 
 
 **Qué es:** titulares y notas de portales vía **RSS** (fase 1 del PoC).
 
-### Fase 1 (implementada) — recolección y tags
+### Fase 1 (implementada) — recolección, tags y curación
 
 Alcance cerrado a propósito:
 
 1. Fuentes en tabla **`feed_sources`** (CRUD en Configuración → Web).
 2. Fetch manual **«Actualizar ahora»** (`POST /api/v1/feeds/web/fetch`) con `feedparser` + deduplicación por GUID.
 3. Ítems en **`feed_web_items`**; retención según `feeds.web.retention_days`.
-4. Etiquetado por **diccionario** (municipio / partido / tema) → bolsón en `feed_web_tags` + vínculo ítem–tag. Sin LLM.
-5. Pantalla **`/feeds/web`**: lista real, filtros por portal y por **tags ya descubiertos**, resumen (conteo, fuentes activas, última actualización, top tags).
-6. Políticas en `workspace_config.document.feeds.web` (`fetch_interval_min`, `retention_days`, `classify_territorial`) — live paths en el hub.
+4. Diccionario catalogador en tabla **`feed_web_dict_entries`** (texto, alias, tipo, activa) — **no** en `workspace_config`. Seed inicial + CRUD en **`/feeds/web`**.
+5. Etiquetado por match de diccionario → bolsón en `feed_web_tags` + vínculo ítem–tag. Sin LLM (por ahora).
+6. Curación en **`/feeds/web`**: eliminar titulares irrelevantes; editar tags a mano; «Reaplicar diccionario» por ítem.
+7. Filtros por portal y por **tags ya descubiertos**; resumen (conteo, fuentes activas, última actualización, top tags).
+8. Políticas en `workspace_config.document.feeds.web` (`fetch_interval_min`, `retention_days`, `classify_territorial`) — live paths en el hub. Fuentes y políticas siguen en Config; el diccionario vive en Feed web.
 
 **Modelo de sentido = bolsón de tags**, no una sola dimensión fija. Un titular puede llevar varios tags; los filtros de la UI solo ofrecen etiquetas que ya aparecieron en el corpus.
 
-**Qué queda fuera (fase 2+):** publicar hechos al mapa / Gestión de métricas; cron de producción; scraping HTML / Google News; IA para etiquetar; sentimiento o ranking de “importancia”.
+**Qué queda fuera (fase 2+):** publicar hechos al mapa / Gestión de métricas; cron de producción; scraping HTML / Google News; **IA para etiquetar** (reemplazaría la edición manual); soft-delete / bloqueo de reingesta tras borrar; sentimiento o ranking de “importancia”.
 
 **Métrica futura (solo diseño):** al cliente le interesa “de qué se habla” en los municipios. Candidatos naturales cuando haya datos: **ocurrencia** (conteos) o **importancia** (ponderación por fuente/recencia). Se define con evidencia real.
 
-**API (prefijo `/api/v1/feeds/web`):** sources CRUD, `POST /fetch`, `GET /items`, `GET /tags`, `GET /summary`.
+**API (prefijo `/api/v1/feeds/web`):** sources CRUD, `POST /fetch`, items (`GET` / `DELETE` / `PUT …/tags` / `POST …/retags`), dictionary CRUD, `GET /tags`, `GET /summary`.
 
 **Salida hacia Semia (fase 2, ejemplos):**
 - Cobertura mediática 7d por municipio o tema

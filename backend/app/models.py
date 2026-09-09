@@ -233,4 +233,15 @@ class FeedWebTag(Base):
     normalized = Column(String, nullable=False, unique=True)
 
     items = relationship("FeedWebItem", secondary=feed_web_item_tags, back_populates="tags")
-    
+
+
+class FeedWebDictEntry(Base):
+    __tablename__ = "feed_web_dict_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    texto = Column(String, nullable=False)
+    alias = Column(String, nullable=False)
+    normalized_alias = Column(String, nullable=False, unique=True)
+    tipo = Column(String, nullable=False, index=True)  # municipio | partido | tema | otro
+    activa = Column(Boolean, default=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

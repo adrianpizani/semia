@@ -1,4 +1,4 @@
-"""API Feed web (RSS) — fuentes, fetch, ítems y tags."""
+"""API Feed web (RSS) — fuentes, fetch, ítems, tags y diccionario."""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,8 +8,12 @@ from schemas import (
     FeedSourceCreate,
     FeedSourceOut,
     FeedSourceUpdate,
+    FeedWebDictEntryCreate,
+    FeedWebDictEntryOut,
+    FeedWebDictEntryUpdate,
     FeedWebFetchResult,
     FeedWebItemOut,
+    FeedWebItemTagsUpdate,
     FeedWebSummary,
     FeedWebTagOut,
 )
@@ -43,6 +47,18 @@ def _item_out(item) -> FeedWebItemOut:
             FeedWebTagOut(id=t.id, texto=t.texto, tipo=t.tipo)
             for t in (item.tags or [])
         ],
+    )
+
+
+def _dict_out(e) -> FeedWebDictEntryOut:
+    return FeedWebDictEntryOut(
+        id=e.id,
+        texto=e.texto,
+        alias=e.alias,
+        normalized_alias=e.normalized_alias,
+        tipo=e.tipo,
+        activa=e.activa,
+        created_at=e.created_at.isoformat() if e.created_at else None,
     )
 
 
@@ -120,6 +136,47 @@ async def get_items(
     return [_item_out(i) for i in items]
 
 
+@router.delete("/items/{item_id}")
+async def remove_item(
+    item_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    ok = await fws.delete_item(db, item_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Titular no encontrado")
+    return {"ok": True}
+
+
+@router.put("/items/{item_id}/tags", response_model=FeedWebItemOut)
+async def put_item_tags(
+    item_id: int,
+    body: FeedWebItemTagsUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    item = await fws.set_item_tags(
+        db,
+        item_id,
+        [{"texto": t.texto, "tipo": t.tipo} for t in body.tags],
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Titular no encontrado")
+    return _item_out(item)
+
+
+@router.post("/items/{item_id}/retags", response_model=FeedWebItemOut)
+async def post_item_retags(
+    item_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    item = await fws.retag_item(db, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Titular no encontrado")
+    return _item_out(item)
+
+
 @router.get("/tags", response_model=list[FeedWebTagOut])
 async def get_tags(
     db: AsyncSession = Depends(get_db),
@@ -141,3 +198,68 @@ async def get_summary(
         ultimo_fetch_at=data["ultimo_fetch_at"],
         top_tags=[FeedWebTagOut(**t) for t in data["top_tags"]],
     )
+
+
+@router.get("/dictionary", response_model=list[FeedWebDictEntryOut])
+async def get_dictionary(
+    tipo: str | None = None,
+    only_active: bool | None = None,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    entries = await fws.list_dictionary(db, tipo=tipo, only_active=only_active)
+    return [_dict_out(e) for e in entries]
+
+
+@router.post("/dictionary", response_model=FeedWebDictEntryOut)
+async def post_dictionary(
+    body: FeedWebDictEntryCreate,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    try:
+        entry = await fws.create_dictionary_entry(
+            db,
+            texto=body.texto,
+            alias=body.alias,
+            tipo=body.tipo,
+            activa=body.activa,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _dict_out(entry)
+
+
+@router.patch("/dictionary/{entry_id}", response_model=FeedWebDictEntryOut)
+async def patch_dictionary(
+    entry_id: int,
+    body: FeedWebDictEntryUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    try:
+        entry = await fws.update_dictionary_entry(
+            db,
+            entry_id,
+            texto=body.texto,
+            alias=body.alias,
+            tipo=body.tipo,
+            activa=body.activa,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entrada no encontrada")
+    return _dict_out(entry)
+
+
+@router.delete("/dictionary/{entry_id}")
+async def remove_dictionary(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    ok = await fws.delete_dictionary_entry(db, entry_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Entrada no encontrada")
+    return {"ok": True}

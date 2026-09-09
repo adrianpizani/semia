@@ -13,8 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 import models
-from services.feed_web_tagging import build_dictionary, extract_tags, normalize_text
+from services.feed_web_tagging import dictionary_from_rows, extract_tags, normalize_text
 from services import workspace_config_service as wcs
+
+
+VALID_DICT_TIPOS = frozenset({"municipio", "partido", "tema", "otro"})
 
 
 def _parse_published(entry: dict) -> datetime | None:
@@ -89,8 +92,121 @@ async def delete_source(db: AsyncSession, source_id: int) -> bool:
 
 
 async def _load_dictionary(db: AsyncSession) -> list[tuple[str, str, str]]:
-    # PoC: solo diccionario curado (evitar falsos positivos con partidos homónimos cortos).
-    return build_dictionary(None)
+    result = await db.execute(
+        select(models.FeedWebDictEntry).where(models.FeedWebDictEntry.activa.is_(True))
+    )
+    rows = [
+        (e.texto, e.normalized_alias, e.tipo)
+        for e in result.scalars().all()
+    ]
+    return dictionary_from_rows(rows)
+
+
+async def list_dictionary(
+    db: AsyncSession,
+    *,
+    tipo: str | None = None,
+    only_active: bool | None = None,
+) -> list[models.FeedWebDictEntry]:
+    stmt = select(models.FeedWebDictEntry).order_by(
+        models.FeedWebDictEntry.tipo,
+        models.FeedWebDictEntry.texto,
+        models.FeedWebDictEntry.alias,
+    )
+    if tipo:
+        stmt = stmt.where(models.FeedWebDictEntry.tipo == tipo)
+    if only_active is True:
+        stmt = stmt.where(models.FeedWebDictEntry.activa.is_(True))
+    elif only_active is False:
+        stmt = stmt.where(models.FeedWebDictEntry.activa.is_(False))
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def create_dictionary_entry(
+    db: AsyncSession,
+    *,
+    texto: str,
+    alias: str,
+    tipo: str,
+    activa: bool = True,
+) -> models.FeedWebDictEntry:
+    tipo_n = (tipo or "otro").strip().lower()
+    if tipo_n not in VALID_DICT_TIPOS:
+        raise ValueError(f"tipo inválido: {tipo}")
+    alias_s = alias.strip()
+    texto_s = texto.strip()
+    if not texto_s or not alias_s:
+        raise ValueError("texto y alias son obligatorios")
+    norm = normalize_text(alias_s)
+    if len(norm) < 4:
+        raise ValueError("el alias normalizado debe tener al menos 4 caracteres")
+    existing = await db.execute(
+        select(models.FeedWebDictEntry).where(models.FeedWebDictEntry.normalized_alias == norm)
+    )
+    if existing.scalar_one_or_none():
+        raise ValueError("ya existe una entrada con ese alias")
+    entry = models.FeedWebDictEntry(
+        texto=texto_s,
+        alias=alias_s,
+        normalized_alias=norm,
+        tipo=tipo_n,
+        activa=activa,
+    )
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+    return entry
+
+
+async def update_dictionary_entry(
+    db: AsyncSession,
+    entry_id: int,
+    *,
+    texto: str | None = None,
+    alias: str | None = None,
+    tipo: str | None = None,
+    activa: bool | None = None,
+) -> models.FeedWebDictEntry | None:
+    entry = await db.get(models.FeedWebDictEntry, entry_id)
+    if not entry:
+        return None
+    if texto is not None:
+        entry.texto = texto.strip()
+    if alias is not None:
+        alias_s = alias.strip()
+        norm = normalize_text(alias_s)
+        if len(norm) < 4:
+            raise ValueError("el alias normalizado debe tener al menos 4 caracteres")
+        clash = await db.execute(
+            select(models.FeedWebDictEntry).where(
+                models.FeedWebDictEntry.normalized_alias == norm,
+                models.FeedWebDictEntry.id != entry_id,
+            )
+        )
+        if clash.scalar_one_or_none():
+            raise ValueError("ya existe una entrada con ese alias")
+        entry.alias = alias_s
+        entry.normalized_alias = norm
+    if tipo is not None:
+        tipo_n = tipo.strip().lower()
+        if tipo_n not in VALID_DICT_TIPOS:
+            raise ValueError(f"tipo inválido: {tipo}")
+        entry.tipo = tipo_n
+    if activa is not None:
+        entry.activa = activa
+    await db.commit()
+    await db.refresh(entry)
+    return entry
+
+
+async def delete_dictionary_entry(db: AsyncSession, entry_id: int) -> bool:
+    entry = await db.get(models.FeedWebDictEntry, entry_id)
+    if not entry:
+        return False
+    await db.delete(entry)
+    await db.commit()
+    return True
 
 
 async def _get_or_create_tag(db: AsyncSession, texto: str, tipo: str | None) -> models.FeedWebTag:
@@ -291,3 +407,70 @@ async def get_summary(db: AsyncSession) -> dict[str, Any]:
         "ultimo_fetch_at": last_fetch.isoformat() if last_fetch else None,
         "top_tags": tags,
     }
+
+
+async def delete_item(db: AsyncSession, item_id: int) -> bool:
+    item = await db.get(models.FeedWebItem, item_id)
+    if not item:
+        return False
+    await db.delete(item)
+    await db.commit()
+    return True
+
+
+async def _reload_item(db: AsyncSession, item_id: int) -> models.FeedWebItem | None:
+    result = await db.execute(
+        select(models.FeedWebItem)
+        .options(selectinload(models.FeedWebItem.source), selectinload(models.FeedWebItem.tags))
+        .where(models.FeedWebItem.id == item_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def set_item_tags(
+    db: AsyncSession,
+    item_id: int,
+    tags: list[dict[str, Any]],
+) -> models.FeedWebItem | None:
+    item = await db.get(models.FeedWebItem, item_id)
+    if not item:
+        return None
+    await db.execute(
+        delete(models.feed_web_item_tags).where(models.feed_web_item_tags.c.item_id == item_id)
+    )
+    seen: set[str] = set()
+    for raw in tags:
+        texto = (raw.get("texto") or "").strip()
+        if not texto:
+            continue
+        norm = normalize_text(texto)
+        if not norm or norm in seen:
+            continue
+        seen.add(norm)
+        tipo = raw.get("tipo")
+        if isinstance(tipo, str):
+            tipo = tipo.strip().lower() or None
+            if tipo and tipo not in VALID_DICT_TIPOS:
+                tipo = "otro"
+        else:
+            tipo = None
+        tag = await _get_or_create_tag(db, texto, tipo)
+        await db.execute(
+            models.feed_web_item_tags.insert().values(item_id=item_id, tag_id=tag.id)
+        )
+    await db.commit()
+    return await _reload_item(db, item_id)
+
+
+async def retag_item(db: AsyncSession, item_id: int) -> models.FeedWebItem | None:
+    item = await db.get(models.FeedWebItem, item_id)
+    if not item:
+        return None
+    dictionary = await _load_dictionary(db)
+    haystack = f"{item.titulo} {item.resumen or ''}"
+    matched = extract_tags(haystack, dictionary)
+    return await set_item_tags(
+        db,
+        item_id,
+        [{"texto": texto, "tipo": tipo} for texto, tipo in matched],
+    )

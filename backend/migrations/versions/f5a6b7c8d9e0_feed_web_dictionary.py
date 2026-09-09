@@ -1,15 +1,22 @@
-"""Diccionario de tags para el feed web (municipio / partido / tema).
+"""feed web dictionary table
 
-Las entradas viven en `feed_web_dict_entries`; este módulo guarda el seed
-inicial y los helpers de normalización / matching.
+Revision ID: f5a6b7c8d9e0
+Revises: e4f5a6b7c8d9
+Create Date: 2026-09-08 09:20:00.000000
+
 """
-from __future__ import annotations
+from typing import Sequence, Union
 
-import re
-import unicodedata
+import sqlalchemy as sa
+from alembic import op
 
-# (texto canónico, alias a buscar, tipo)
-SEED_DICT_ENTRIES: list[tuple[str, str, str]] = [
+revision: str = "f5a6b7c8d9e0"
+down_revision: Union[str, Sequence[str], None] = "e4f5a6b7c8d9"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+# (texto, alias, tipo) — mirror of feed_web_tagging.SEED_DICT_ENTRIES
+SEED = [
     ("La Libertad Avanza", "la libertad avanza", "partido"),
     ("La Libertad Avanza", "javier milei", "partido"),
     ("Juntos por el Cambio", "juntos por el cambio", "partido"),
@@ -68,32 +75,54 @@ SEED_DICT_ENTRIES: list[tuple[str, str, str]] = [
 ]
 
 
-def normalize_text(text: str) -> str:
-    if not isinstance(text, str):
-        text = str(text)
-    text = text.lower().strip()
+def _norm(alias: str) -> str:
+    import unicodedata
+
+    text = alias.lower().strip()
     return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("utf-8")
 
 
-def dictionary_from_rows(rows: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
-    """rows: (texto, alias_or_normalized, tipo) → sorted match list."""
-    entries: list[tuple[str, str, str]] = []
-    for texto, alias, tipo in rows:
-        norm = normalize_text(alias)
-        if len(norm) < 4:
-            continue
-        entries.append((texto.strip(), norm, tipo))
-    entries.sort(key=lambda e: len(e[1]), reverse=True)
-    return entries
+def upgrade() -> None:
+    op.create_table(
+        "feed_web_dict_entries",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("texto", sa.String(), nullable=False),
+        sa.Column("alias", sa.String(), nullable=False),
+        sa.Column("normalized_alias", sa.String(), nullable=False),
+        sa.Column("tipo", sa.String(), nullable=False),
+        sa.Column("activa", sa.Boolean(), server_default=sa.text("true"), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("normalized_alias"),
+    )
+    op.create_index("ix_feed_web_dict_entries_tipo", "feed_web_dict_entries", ["tipo"])
+    op.create_index("ix_feed_web_dict_entries_activa", "feed_web_dict_entries", ["activa"])
+
+    rows = []
+    for texto, alias, tipo in SEED:
+        rows.append(
+            {
+                "texto": texto,
+                "alias": alias,
+                "normalized_alias": _norm(alias),
+                "tipo": tipo,
+                "activa": True,
+            }
+        )
+    op.bulk_insert(
+        sa.table(
+            "feed_web_dict_entries",
+            sa.column("texto", sa.String),
+            sa.column("alias", sa.String),
+            sa.column("normalized_alias", sa.String),
+            sa.column("tipo", sa.String),
+            sa.column("activa", sa.Boolean),
+        ),
+        rows,
+    )
 
 
-def extract_tags(text: str, dictionary: list[tuple[str, str, str]]) -> list[tuple[str, str]]:
-    haystack = normalize_text(text)
-    found: dict[str, str] = {}
-    for texto, alias, tipo in dictionary:
-        if not alias or len(alias) < 4:
-            continue
-        pattern = r"(?<!\w)" + re.escape(alias) + r"(?!\w)"
-        if re.search(pattern, haystack) and texto not in found:
-            found[texto] = tipo
-    return [(t, tipo) for t, tipo in found.items()]
+def downgrade() -> None:
+    op.drop_index("ix_feed_web_dict_entries_activa", table_name="feed_web_dict_entries")
+    op.drop_index("ix_feed_web_dict_entries_tipo", table_name="feed_web_dict_entries")
+    op.drop_table("feed_web_dict_entries")

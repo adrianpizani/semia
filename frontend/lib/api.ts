@@ -584,4 +584,84 @@ export const getFeedWebSummary = async (): Promise<FeedWebSummary> => {
   return await response.json();
 };
 
+export interface FeedWebDictEntry {
+  id: number
+  texto: string
+  alias: string
+  normalized_alias: string
+  tipo: string
+  activa: boolean
+  created_at?: string | null
+}
+
+export const listFeedWebDictionary = async (params?: {
+  tipo?: string
+  only_active?: boolean
+}): Promise<FeedWebDictEntry[]> => {
+  const qs = new URLSearchParams();
+  if (params?.tipo) qs.set('tipo', params.tipo);
+  if (params?.only_active != null) qs.set('only_active', String(params.only_active));
+  const suffix = qs.toString() ? `?${qs}` : '';
+  const response = await apiFetch(`/feeds/web/dictionary${suffix}`);
+  await throwIfNotOk(response, 'No se pudo cargar el diccionario');
+  return await response.json();
+};
+
+export const createFeedWebDictEntry = async (body: {
+  texto: string
+  alias: string
+  tipo?: string
+  activa?: boolean
+}): Promise<FeedWebDictEntry> => {
+  const response = await apiFetch('/feeds/web/dictionary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  await throwIfNotOk(response, 'No se pudo crear la entrada');
+  return await response.json();
+};
+
+export const updateFeedWebDictEntry = async (
+  id: number,
+  body: { texto?: string; alias?: string; tipo?: string; activa?: boolean },
+): Promise<FeedWebDictEntry> => {
+  const response = await apiFetch(`/feeds/web/dictionary/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  await throwIfNotOk(response, 'No se pudo actualizar la entrada');
+  return await response.json();
+};
+
+export const deleteFeedWebDictEntry = async (id: number): Promise<void> => {
+  const response = await apiFetch(`/feeds/web/dictionary/${id}`, { method: 'DELETE' });
+  await throwIfNotOk(response, 'No se pudo eliminar la entrada');
+};
+
+export const deleteFeedWebItem = async (id: number): Promise<void> => {
+  const response = await apiFetch(`/feeds/web/items/${id}`, { method: 'DELETE' });
+  await throwIfNotOk(response, 'No se pudo eliminar el titular');
+};
+
+export const setFeedWebItemTags = async (
+  id: number,
+  tags: Array<{ texto: string; tipo?: string | null }>,
+): Promise<FeedWebItem> => {
+  const response = await apiFetch(`/feeds/web/items/${id}/tags`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tags }),
+  });
+  await throwIfNotOk(response, 'No se pudieron guardar los tags');
+  return await response.json();
+};
+
+export const retagFeedWebItem = async (id: number): Promise<FeedWebItem> => {
+  const response = await apiFetch(`/feeds/web/items/${id}/retags`, { method: 'POST' });
+  await throwIfNotOk(response, 'No se pudo reaplicar el diccionario');
+  return await response.json();
+};
+
 
