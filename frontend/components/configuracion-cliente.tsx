@@ -21,6 +21,7 @@ import {
   getWorkspaceConfig,
   listFeedWebSources,
   patchWorkspaceConfig,
+  seedFeedWebLocalSources,
   updateFeedWebSource,
   type FeedSource,
 } from "@/lib/api"
@@ -143,9 +144,11 @@ export function ConfiguracionCliente() {
   const [webPolling, setWebPolling] = useState("30")
   const [webRetention, setWebRetention] = useState("30")
   const [webClassify, setWebClassify] = useState(true)
+  const [webImportUntagged, setWebImportUntagged] = useState(false)
   const [webSources, setWebSources] = useState<FeedSource[]>([])
   const [newSourceName, setNewSourceName] = useState("")
   const [newSourceUrl, setNewSourceUrl] = useState("")
+  const [newSourceMuni, setNewSourceMuni] = useState("")
   const [sourcesBusy, setSourcesBusy] = useState(false)
   const [iaConfidence, setIaConfidence] = useState([75])
   const [iaDailyLimit, setIaDailyLimit] = useState("50")
@@ -183,6 +186,7 @@ export function ConfiguracionCliente() {
       if (typeof web.fetch_interval_min === "number") setWebPolling(String(web.fetch_interval_min))
       if (typeof web.retention_days === "number") setWebRetention(String(web.retention_days))
       if (typeof web.classify_territorial === "boolean") setWebClassify(web.classify_territorial)
+      if (typeof web.import_untagged === "boolean") setWebImportUntagged(web.import_untagged)
       if (typeof ia.min_confidence_pct === "number") setIaConfidence([ia.min_confidence_pct])
       if (typeof ia.daily_limit === "number") setIaDailyLimit(String(ia.daily_limit))
       if (typeof archivos.auto_suggest_processor === "boolean") setAutoProcessor(archivos.auto_suggest_processor)
@@ -211,6 +215,7 @@ export function ConfiguracionCliente() {
             fetch_interval_min: Number(webPolling) || 30,
             retention_days: Number(webRetention) || 30,
             classify_territorial: webClassify,
+            import_untagged: webImportUntagged,
           },
         },
       })
@@ -487,13 +492,45 @@ export function ConfiguracionCliente() {
                       checked={webClassify}
                       onCheckedChange={setWebClassify}
                     />
+                    <SwitchRow
+                      label="Importar titulares sin tags"
+                      hint="Si está apagado (recomendado), al actualizar se omiten notas sin match de diccionario (salud, internacionales, etc.)."
+                      checked={webImportUntagged}
+                      onCheckedChange={setWebImportUntagged}
+                    />
 
                     <div className="space-y-3">
-                      <div>
-                        <Label>Fuentes RSS</Label>
-                        <p className="text-xs text-muted-foreground">
-                          Alta, baja y activar/desactivar. No se guardan en el JSON del workspace.
-                        </p>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <Label>Fuentes RSS</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Municipio default: tag automático en todos los titulares de esa fuente
+                            (medios locales). Nacionales: vacío.
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="bg-white"
+                          disabled={sourcesBusy}
+                          onClick={async () => {
+                            setSourcesBusy(true)
+                            try {
+                              const res = await seedFeedWebLocalSources()
+                              toast.success(
+                                `Locales: +${res.created} nuevas · ${res.updated} actualizadas (${res.total_file} en archivo)`,
+                              )
+                              const sources = await listFeedWebSources()
+                              setWebSources(sources)
+                            } catch (err) {
+                              toast.error(err instanceof Error ? err.message : "Error al importar")
+                            } finally {
+                              setSourcesBusy(false)
+                            }
+                          }}
+                        >
+                          Importar medios locales (RSS OK)
+                        </Button>
                       </div>
                       <div className="space-y-2">
                         {webSources.length === 0 && (
@@ -507,6 +544,11 @@ export function ConfiguracionCliente() {
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium">{src.nombre}</p>
                               <p className="truncate text-[11px] text-muted-foreground">{src.url}</p>
+                              {src.municipio_default && (
+                                <p className="text-[11px] text-emerald-800">
+                                  Municipio default: {src.municipio_default}
+                                </p>
+                              )}
                               {src.ultimo_error && (
                                 <p className="text-[11px] text-destructive">{src.ultimo_error}</p>
                               )}
@@ -552,7 +594,7 @@ export function ConfiguracionCliente() {
                           </div>
                         ))}
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr_auto]">
+                      <div className="grid gap-2 sm:grid-cols-[1fr_1.2fr_0.8fr_auto]">
                         <Input
                           className="bg-white"
                           placeholder="Nombre del medio"
@@ -565,6 +607,12 @@ export function ConfiguracionCliente() {
                           value={newSourceUrl}
                           onChange={(e) => setNewSourceUrl(e.target.value)}
                         />
+                        <Input
+                          className="bg-white"
+                          placeholder="Municipio (opcional)"
+                          value={newSourceMuni}
+                          onChange={(e) => setNewSourceMuni(e.target.value)}
+                        />
                         <Button
                           variant="outline"
                           className="bg-white"
@@ -576,12 +624,14 @@ export function ConfiguracionCliente() {
                                 nombre: newSourceName.trim(),
                                 url: newSourceUrl.trim(),
                                 activa: true,
+                                municipio_default: newSourceMuni.trim() || null,
                               })
                               setWebSources((prev) =>
                                 [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)),
                               )
                               setNewSourceName("")
                               setNewSourceUrl("")
+                              setNewSourceMuni("")
                               toast.success("Fuente agregada")
                             } catch (err) {
                               toast.error(err instanceof Error ? err.message : "Error")

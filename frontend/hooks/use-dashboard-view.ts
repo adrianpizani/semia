@@ -251,8 +251,18 @@ export function useDashboardView() {
     selectedSecondaryMetrics
       .map(id => activeMetrics.find(m => m.id === id))
       .filter((m): m is Metrica =>
-        !!m && (m.tipo === TipoMetricaEnum.ECONOMICA || m.tipo === TipoMetricaEnum.DEMOGRAFICA)
+        !!m &&
+        (m.tipo === TipoMetricaEnum.ECONOMICA ||
+          m.tipo === TipoMetricaEnum.DEMOGRAFICA ||
+          m.tipo === TipoMetricaEnum.PRENSA) &&
+        (m.mostrar_cruce !== false)
       )
+  ), [selectedSecondaryMetrics, activeMetrics])
+
+  const hotspotSecondaries = useMemo(() => (
+    selectedSecondaryMetrics
+      .map(id => activeMetrics.find(m => m.id === id))
+      .filter((m): m is Metrica => !!m && m.mostrar_hotspots === true)
   ), [selectedSecondaryMetrics, activeMetrics])
 
   useEffect(() => {
@@ -291,6 +301,7 @@ export function useDashboardView() {
     metricRanges,
     selectedParty,
     numericSecondaries,
+    hotspotSecondaries,
     cruceMetricId,
     setCruceMetricId,
     primaryIsElectoral,

@@ -11,10 +11,12 @@ type FeedShellProps = {
   actions?: ReactNode
   /** When true, shows a live badge instead of the demo badge. */
   live?: boolean
+  /** Wider content area (e.g. 3-column feed web). */
+  wide?: boolean
 }
 
 /** Shell compartido para las vistas de feeds (Social / Web / IA). */
-export function FeedShell({ title, description, children, actions, live = false }: FeedShellProps) {
+export function FeedShell({ title, description, children, actions, live = false, wide = false }: FeedShellProps) {
   return (
     <div className="flex h-screen flex-col">
       <div className="border-b border-primary/15 bg-primary/[0.07] px-6 py-4">
@@ -52,7 +54,7 @@ export function FeedShell({ title, description, children, actions, live = false 
         </div>
       </div>
       <div className="flex-1 overflow-auto bg-amber-50/70 p-6">
-        <div className="mx-auto max-w-7xl space-y-4">{children}</div>
+        <div className={`mx-auto space-y-4 ${wide ? "max-w-[1600px]" : "max-w-7xl"}`}>{children}</div>
       </div>
     </div>
   )

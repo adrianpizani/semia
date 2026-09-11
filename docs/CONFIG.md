@@ -40,7 +40,7 @@ storage
 
 **Live hoy:**
 - `feeds.socio.borrar_trimestre_anterior_al_publicar`, `feeds.socio.trimestre_referencia`
-- `feeds.web.fetch_interval_min`, `feeds.web.retention_days`, `feeds.web.classify_territorial`
+- `feeds.web.fetch_interval_min`, `feeds.web.retention_days`, `feeds.web.classify_territorial`, `feeds.web.import_untagged`
 - Fuentes RSS: tabla `feed_sources` (CRUD `/api/v1/feeds/web/sources`, UI Configuración → Web)
 
 Compat: `GET/PATCH /feeds/socio/config` sigue existiendo como fachada sobre `feeds.socio`.
@@ -54,7 +54,7 @@ Compat: `GET/PATCH /feeds/socio/config` sigue existiendo como fachada sobre `fee
 | EPH: borrar trimestre | Config → Feeds + Feed APIs | `workspace_config` → `feeds.socio` |
 | Activar métrica / escala | `/metricas` | tabla `metricas` |
 | Preferencias de mapa (sesión) | Dashboard | `sessionStorage` → futuro `user_preferences` |
-| Web políticas (intervalo, retención, clasificar) | Config → Web | `workspace_config` → `feeds.web` |
+| Web políticas (intervalo, retención, clasificar, importar sin tags) | Config → Web | `workspace_config` → `feeds.web` |
 | Fuentes RSS | Config → Web | tabla `feed_sources` |
 | Web/Social/IA resto (social, ia) | Config (preview) | schema en `feeds.*` (aún no live) |
 | Secretos | — | env |

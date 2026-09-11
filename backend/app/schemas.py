@@ -76,6 +76,8 @@ class Metrica(BaseModel):
     is_active: bool
     tipo: TipoMetrica # Campo añadido
     escala_rango: Literal["log", "linear"] | None = None
+    mostrar_cruce: bool = True
+    mostrar_hotspots: bool = False
     archivo: ArchivoForMetrica | None
     # Feed EPH trimestral (calculado al listar; null en métricas no-EPH)
     periodo_publicado: str | None = None
@@ -87,6 +89,11 @@ class Metrica(BaseModel):
 
 class MetricaEscalaUpdate(BaseModel):
     escala_rango: Literal["log", "linear"] | None = None
+
+
+class MetricaVistaUpdate(BaseModel):
+    mostrar_cruce: bool | None = None
+    mostrar_hotspots: bool | None = None
 
 # --- Filtros Genéricos ---
 
@@ -280,6 +287,7 @@ class FeedSourceOut(BaseModel):
     nombre: str
     url: str
     activa: bool
+    municipio_default: str | None = None
     ultimo_fetch_at: str | None = None
     ultimo_error: str | None = None
 
@@ -290,12 +298,14 @@ class FeedSourceCreate(BaseModel):
     nombre: str
     url: str
     activa: bool = True
+    municipio_default: str | None = None
 
 
 class FeedSourceUpdate(BaseModel):
     nombre: str | None = None
     url: str | None = None
     activa: bool | None = None
+    municipio_default: str | None = None
 
 
 class FeedWebTagOut(BaseModel):
@@ -317,11 +327,29 @@ class FeedWebItemOut(BaseModel):
     tags: list[FeedWebTagOut] = []
 
 
+class FeedWebSourceFetchResult(BaseModel):
+    source_id: int
+    nombre: str
+    ok: bool
+    inserted: int = 0
+    skipped: int = 0
+    skipped_untagged: int = 0
+    error: str | None = None
+    classify: bool = True
+    import_untagged: bool = False
+
+
 class FeedWebFetchResult(BaseModel):
     inserted: int
     purged: int
     classify: bool
+    import_untagged: bool = False
+    skipped_untagged: int = 0
     sources: list[dict]
+
+
+class FeedWebPurgeResult(BaseModel):
+    purged: int
 
 
 class FeedWebSummary(BaseModel):
@@ -364,3 +392,48 @@ class FeedWebTagAssign(BaseModel):
 
 class FeedWebItemTagsUpdate(BaseModel):
     tags: list[FeedWebTagAssign]
+
+
+class FeedWebAgendaPublishRequest(BaseModel):
+    window_days: int = 7
+    score: str = "count"  # count | recency
+    min_score: float = 2.0
+    min_municipios: int = 2
+    require_variance: bool = True
+
+
+class FeedWebAgendaMetricaOut(BaseModel):
+    metrica_id: int
+    clave: str
+    nombre_amigable: str
+    created: bool
+    hechos: int
+    hechos_reemplazados: int
+    is_active: bool
+    valor_min: float | None = None
+    valor_max: float | None = None
+
+
+class FeedWebAgendaSkippedTema(BaseModel):
+    tema: str
+    reason: str
+    municipios: int = 0
+
+
+class FeedWebAgendaPublishResult(BaseModel):
+    ok: bool
+    window_days: int
+    score: str
+    min_score: float = 2.0
+    min_municipios: int = 2
+    items_used: int
+    archivo_id: int | None = None
+    metricas: list[FeedWebAgendaMetricaOut] = []
+    hechos: int = 0
+    hechos_reemplazados: int = 0
+    metricas_limpiadas: int = 0
+    skipped_temas: list[FeedWebAgendaSkippedTema] = []
+    skipped_low_score: int = 0
+    unresolved_municipios: list[str] = []
+    log: str | None = None
+    error: str | None = None

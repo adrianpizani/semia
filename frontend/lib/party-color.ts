@@ -1,22 +1,38 @@
 // Utilidades de color por partido, compartidas entre el mapa y la leyenda.
 
 // Paleta conocida para partidos principales (colores estables y legibles).
+// Keys en mayúsculas sin acentos (ver normalizePartyKey).
 const KNOWN_PARTY_COLORS: Record<string, string> = {
   'JUNTOS POR EL CAMBIO': '#FFD700',
   'JUNTOS': '#FFD700',
   'FRENTE DE TODOS': '#1E90FF',
+  'UNION POR LA PATRIA': '#1E90FF',
+  'LA LIBERTAD AVANZA': '#7C3AED',
+  'PROPUESTA REPUBLICANA': '#F59E0B',
+  'PRO': '#F59E0B',
   'CONSENSO FEDERAL': '#FFA500',
   'FRENTE DE IZQUIERDA Y DE TRABAJADORES - UNIDAD': '#FF0000',
   'FRENTE DE IZQUIERDA Y DE LOS TRABAJADORES': '#DC143C',
   'FRENTE DE IZQUIERDA Y DE LOS TRABAJADORES - UNIDAD': '#DC143C',
+  'FRENTE DE IZQUIERDA': '#DC143C',
   'UNIDAD CIUDADANA': '#87CEEB',
   'CAMBIEMOS BUENOS AIRES': '#FFC0CB',
   '1PAIS': '#9370DB',
   'FRENTE JUSTICIALISTA': '#00008B',
 };
 
+/** Normaliza nombre de fuerza para lookup de color (mayúsculas, sin acentos). */
+export function normalizePartyKey(partyName: string): string {
+  return partyName
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
 // Hash determinístico de un string -> entero no negativo.
-function hashString(str: string): number {
+export function hashString(str: string): number {
   let h = 0;
   for (let i = 0; i < str.length; i++) {
     h = (h << 5) - h + str.charCodeAt(i);
@@ -30,9 +46,12 @@ function hashString(str: string): number {
 // datasets grandes (muchos partidos) el mapa y la leyenda no queden todos en gris.
 export function getPartyColor(partyName: string | null | undefined): string {
   if (!partyName) return '#D1D5DB'; // gris por defecto (sin partido / datos)
-  const known = KNOWN_PARTY_COLORS[partyName];
+  const exact = KNOWN_PARTY_COLORS[partyName];
+  if (exact) return exact;
+  const key = normalizePartyKey(partyName);
+  const known = KNOWN_PARTY_COLORS[key];
   if (known) return known;
-  const hue = hashString(partyName) % 360;
+  const hue = hashString(key) % 360;
   return `hsl(${hue}, 65%, 50%)`;
 }
 

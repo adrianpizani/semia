@@ -25,6 +25,7 @@ LIVE_PATHS: frozenset[str] = frozenset(
         "feeds.web.fetch_interval_min",
         "feeds.web.retention_days",
         "feeds.web.classify_territorial",
+        "feeds.web.import_untagged",
     }
 )
 
@@ -64,6 +65,7 @@ DEFAULT_WORKSPACE_CONFIG: dict[str, Any] = {
             "fetch_interval_min": 30,
             "retention_days": 30,
             "classify_territorial": True,
+            "import_untagged": False,
         },
         "social": {
             "ingest_interval_min": 15,
