@@ -3,8 +3,9 @@ import { useMapView } from '@/hooks/use-map-view';
 import { useMemo, useCallback, useEffect, useRef } from 'react';
 import type { FeatureCollection } from 'geojson';
 import L, { type LatLngExpression } from 'leaflet';
-import { DistritoFeature, MunicipioTooltipSecondaries } from '@/lib/types'; // Importar tipo común
+import { DistritoFeature, GenericData, Metrica, MunicipioTooltipSecondaries } from '@/lib/types';
 import { PartyLegend } from '@/components/party-legend';
+import { PrensaHotspotsLayer } from '@/components/prensa-hotspots-layer';
 
 // --- Tipos de Datos ---
 interface MapViewClientProps {
@@ -17,6 +18,9 @@ interface MapViewClientProps {
   selectedCircuito?: DistritoFeature | null;
   highlightParty?: string | null;
   secondaryByGeo?: MunicipioTooltipSecondaries;
+  hotspotMetrics?: Metrica[];
+  hotspotDataByMetric?: Record<number, GenericData[]>;
+  onHotspotSelect?: (geografiaId: number, nombre: string) => void;
 }
 
 const PBA_CENTER: LatLngExpression = [-37.0, -60.0];
@@ -79,6 +83,9 @@ export default function MapViewClient({
   selectedCircuito = null,
   highlightParty = null,
   secondaryByGeo = {},
+  hotspotMetrics = [],
+  hotspotDataByMetric = {},
+  onHotspotSelect,
 }: MapViewClientProps) {
   const {
     municipiosGeoJSON,
@@ -177,6 +184,16 @@ export default function MapViewClient({
             </LayerGroup>
           </LayersControl.Overlay>
         </LayersControl>
+
+        {hotspotMetrics.length > 0 && (
+          <PrensaHotspotsLayer
+            municipiosGeoJSON={municipiosGeoJSON}
+            metrics={hotspotMetrics}
+            dataByMetric={hotspotDataByMetric}
+            selectedGeografiaId={selectedMunicipio?.id != null ? Number(selectedMunicipio.id) : null}
+            onSelect={onHotspotSelect}
+          />
+        )}
       </MapContainer>
 
       {!showLoading && legendParties.length > 0 && (

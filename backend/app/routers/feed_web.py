@@ -8,12 +8,16 @@ from schemas import (
     FeedSourceCreate,
     FeedSourceOut,
     FeedSourceUpdate,
+    FeedWebAgendaPublishRequest,
+    FeedWebAgendaPublishResult,
     FeedWebDictEntryCreate,
     FeedWebDictEntryOut,
     FeedWebDictEntryUpdate,
     FeedWebFetchResult,
     FeedWebItemOut,
     FeedWebItemTagsUpdate,
+    FeedWebPurgeResult,
+    FeedWebSourceFetchResult,
     FeedWebSummary,
     FeedWebTagOut,
 )
@@ -28,6 +32,7 @@ def _source_out(s) -> FeedSourceOut:
         nombre=s.nombre,
         url=s.url,
         activa=s.activa,
+        municipio_default=s.municipio_default,
         ultimo_fetch_at=s.ultimo_fetch_at.isoformat() if s.ultimo_fetch_at else None,
         ultimo_error=s.ultimo_error,
     )
@@ -77,7 +82,13 @@ async def post_source(
     _admin=Depends(require_admin),
 ):
     try:
-        source = await fws.create_source(db, body.nombre, body.url, body.activa)
+        source = await fws.create_source(
+            db,
+            body.nombre,
+            body.url,
+            body.activa,
+            municipio_default=body.municipio_default,
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No se pudo crear la fuente: {exc}") from exc
     return _source_out(source)
@@ -90,12 +101,16 @@ async def patch_source(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_admin),
 ):
+    payload = body.model_dump(exclude_unset=True)
+    clear_muni = "municipio_default" in payload and payload.get("municipio_default") is None
     source = await fws.update_source(
         db,
         source_id,
-        nombre=body.nombre,
-        url=body.url,
-        activa=body.activa,
+        nombre=payload.get("nombre"),
+        url=payload.get("url"),
+        activa=payload.get("activa"),
+        municipio_default=payload.get("municipio_default"),
+        clear_municipio_default=clear_muni,
     )
     if not source:
         raise HTTPException(status_code=404, detail="Fuente no encontrada")
@@ -114,13 +129,66 @@ async def remove_source(
     return {"ok": True}
 
 
+@router.post("/sources/seed-locals")
+async def seed_local_sources(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Importa medios locales con RSS verificado + municipio_default."""
+    result = await fws.seed_local_sources(db)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "Error al seed")
+    return result
+
+
+@router.post("/fetch/purge", response_model=FeedWebPurgeResult)
+async def purge_now(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Aplica retención una vez (llamar al final del loop por fuente)."""
+    purged = await fws.purge_expired(db)
+    return FeedWebPurgeResult(purged=purged)
+
+
+@router.post("/fetch/{source_id}", response_model=FeedWebSourceFetchResult)
+async def fetch_one_source(
+    source_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    result = await fws.fetch_one(db, source_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Fuente no encontrada")
+    return FeedWebSourceFetchResult(**result)
+
+
 @router.post("/fetch", response_model=FeedWebFetchResult)
 async def fetch_now(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_admin),
 ):
+    """Batch de todas las activas (puede timeout detrás de nginx). Preferir /fetch/{id}."""
     result = await fws.fetch_all_active(db)
     return FeedWebFetchResult(**result)
+
+
+@router.post("/publish-agenda", response_model=FeedWebAgendaPublishResult)
+async def publish_agenda(
+    body: FeedWebAgendaPublishRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    score = body.score if body.score in ("count", "recency") else "count"
+    result = await fws.publish_agenda(
+        db,
+        window_days=body.window_days,
+        score=score,
+        min_score=body.min_score,
+        min_municipios=body.min_municipios,
+        require_variance=body.require_variance,
+    )
+    return FeedWebAgendaPublishResult.model_validate(result)
 
 
 @router.get("/items", response_model=list[FeedWebItemOut])

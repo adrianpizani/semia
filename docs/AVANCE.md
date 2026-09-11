@@ -240,7 +240,7 @@ Metricas ┘           ▲
 - **`usuarios`**: email, hash bcrypt, rol (`admin`/`viewer`), activo, last_login.
 - **`archivos`**: registro de cada archivo subido (nombre visible, original, fecha de carga, estado de procesamiento, log, filas procesadas/fallidas).
 - **`dimension_geografica`**: jerarquía Partido → Circuito, con geometría PostGIS (MULTIPOLYGON, SRID 4326).
-- **`metricas`**: definición de cada métrica (nombre clave, nombre amigable, tipo: ELECTORAL/DEMOGRAFICA/GEOGRAFICA/TEMPORAL/ECONOMICA, is_active, archivo origen).
+- **`metricas`**: definición de cada métrica (nombre clave, nombre amigable, tipo: ELECTORAL/DEMOGRAFICA/GEOGRAFICA/TEMPORAL/ECONOMICA/**PRENSA**, is_active, `mostrar_cruce` / `mostrar_hotspots`, archivo origen).
 - **`hechos_datos`**: tabla de hechos (long/tidy) con geografía + métrica + archivo + valor numérico + fecha + dimensión extra JSON.
 - **`procesadores`**: mapeos configurables de columnas, nivel geográfico y nombre de métrica por formato de archivo.
 

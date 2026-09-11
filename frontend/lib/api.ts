@@ -182,6 +182,23 @@ export const updateMetricaEscala = async (
   return await response.json();
 };
 
+export const updateMetricaVista = async (
+  metricId: number,
+  body: { mostrar_cruce?: boolean; mostrar_hotspots?: boolean },
+) => {
+  const response = await fetch(`${API_BASE_URL}/metricas/${metricId}/vista`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to update metric vista');
+  }
+  return await response.json();
+};
+
 export const deleteArchivo = async (archivoId: number) => {
   try {
     const response = await fetch(`${API_BASE_URL}/archivos/${archivoId}`, {
@@ -474,6 +491,7 @@ export interface FeedSource {
   nombre: string
   url: string
   activa: boolean
+  municipio_default?: string | null
   ultimo_fetch_at?: string | null
   ultimo_error?: string | null
 }
@@ -497,10 +515,24 @@ export interface FeedWebItem {
   tags: FeedWebTag[]
 }
 
+export interface FeedWebSourceFetchResult {
+  source_id: number
+  nombre: string
+  ok: boolean
+  inserted: number
+  skipped: number
+  skipped_untagged: number
+  error?: string | null
+  classify?: boolean
+  import_untagged?: boolean
+}
+
 export interface FeedWebFetchResult {
   inserted: number
   purged: number
   classify: boolean
+  import_untagged?: boolean
+  skipped_untagged?: number
   sources: Array<Record<string, unknown>>
 }
 
@@ -521,6 +553,7 @@ export const createFeedWebSource = async (body: {
   nombre: string
   url: string
   activa?: boolean
+  municipio_default?: string | null
 }): Promise<FeedSource> => {
   const response = await apiFetch('/feeds/web/sources', {
     method: 'POST',
@@ -533,7 +566,7 @@ export const createFeedWebSource = async (body: {
 
 export const updateFeedWebSource = async (
   id: number,
-  body: { nombre?: string; url?: string; activa?: boolean },
+  body: { nombre?: string; url?: string; activa?: boolean; municipio_default?: string | null },
 ): Promise<FeedSource> => {
   const response = await apiFetch(`/feeds/web/sources/${id}`, {
     method: 'PATCH',
@@ -549,6 +582,31 @@ export const deleteFeedWebSource = async (id: number): Promise<void> => {
   await throwIfNotOk(response, 'No se pudo eliminar la fuente');
 };
 
+export const seedFeedWebLocalSources = async (): Promise<{
+  ok: boolean
+  created: number
+  updated: number
+  total_file: number
+}> => {
+  const response = await apiFetch('/feeds/web/sources/seed-locals', { method: 'POST' });
+  await throwIfNotOk(response, 'No se pudieron importar medios locales');
+  return await response.json();
+};
+
+/** Fetch atómico de una fuente (usar desde la UI en loop). */
+export const fetchFeedWebSource = async (sourceId: number): Promise<FeedWebSourceFetchResult> => {
+  const response = await apiFetch(`/feeds/web/fetch/${sourceId}`, { method: 'POST' });
+  await throwIfNotOk(response, 'Error al actualizar la fuente RSS');
+  return await response.json();
+};
+
+export const purgeFeedWebRetention = async (): Promise<{ purged: number }> => {
+  const response = await apiFetch('/feeds/web/fetch/purge', { method: 'POST' });
+  await throwIfNotOk(response, 'Error al aplicar retención');
+  return await response.json();
+};
+
+/** Batch de todas las activas — puede timeout detrás de nginx; preferir fetchFeedWebSource. */
 export const fetchFeedWebNow = async (): Promise<FeedWebFetchResult> => {
   const response = await apiFetch('/feeds/web/fetch', { method: 'POST' });
   await throwIfNotOk(response, 'Error al actualizar feeds RSS');
@@ -661,6 +719,59 @@ export const setFeedWebItemTags = async (
 export const retagFeedWebItem = async (id: number): Promise<FeedWebItem> => {
   const response = await apiFetch(`/feeds/web/items/${id}/retags`, { method: 'POST' });
   await throwIfNotOk(response, 'No se pudo reaplicar el diccionario');
+  return await response.json();
+};
+
+export interface FeedWebAgendaMetrica {
+  metrica_id: number
+  clave: string
+  nombre_amigable: string
+  created: boolean
+  hechos: number
+  hechos_reemplazados: number
+  is_active: boolean
+  valor_min?: number | null
+  valor_max?: number | null
+}
+
+export interface FeedWebAgendaPublishResult {
+  ok: boolean
+  window_days: number
+  score: string
+  min_score?: number
+  min_municipios?: number
+  items_used: number
+  archivo_id?: number | null
+  metricas: FeedWebAgendaMetrica[]
+  hechos: number
+  hechos_reemplazados: number
+  metricas_limpiadas?: number
+  skipped_temas?: Array<{ tema: string; reason: string; municipios: number }>
+  skipped_low_score?: number
+  unresolved_municipios: string[]
+  log?: string | null
+  error?: string | null
+}
+
+export const publishFeedWebAgenda = async (body?: {
+  window_days?: number
+  score?: 'count' | 'recency'
+  min_score?: number
+  min_municipios?: number
+  require_variance?: boolean
+}): Promise<FeedWebAgendaPublishResult> => {
+  const response = await apiFetch('/feeds/web/publish-agenda', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      window_days: body?.window_days ?? 7,
+      score: body?.score ?? 'count',
+      min_score: body?.min_score ?? 2,
+      min_municipios: body?.min_municipios ?? 2,
+      require_variance: body?.require_variance ?? true,
+    }),
+  });
+  await throwIfNotOk(response, 'No se pudo publicar la agenda al mapa');
   return await response.json();
 };
 

@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge, BadgeProps } from "@/components/ui/badge"
-import { toggleMetrica, updateMetricaEscala } from "@/lib/api"
+import { toggleMetrica, updateMetricaEscala, updateMetricaVista } from "@/lib/api"
 import { Metrica, TipoMetricaEnum } from "@/lib/types"
 
 interface ArchivoForMetrica {
@@ -24,21 +24,42 @@ interface MetricasClienteProps {
 }
 
 const TipoMetricaBadge: React.FC<{ tipo: TipoMetricaEnum }> = ({ tipo }) => {
-  const typeStyles: Partial<Record<TipoMetricaEnum, { variant: BadgeProps['variant']; text: string }>> = {
+  const typeStyles: Partial<Record<TipoMetricaEnum, { variant: BadgeProps['variant']; text: string; className?: string }>> = {
     [TipoMetricaEnum.ELECTORAL]: { variant: "default", text: "Electoral" },
     [TipoMetricaEnum.DEMOGRAFICA]: { variant: "secondary", text: "Demográfica" },
     [TipoMetricaEnum.GEOGRAFICA]: { variant: "outline", text: "Geográfica" },
     [TipoMetricaEnum.TEMPORAL]: { variant: "secondary", text: "Temporal" },
     [TipoMetricaEnum.ECONOMICA]: { variant: "secondary", text: "Económica" },
+    [TipoMetricaEnum.PRENSA]: {
+      variant: "secondary",
+      text: "Prensa",
+      className: "bg-amber-500/15 text-amber-900 hover:bg-amber-500/15",
+    },
   };
 
   const style = typeStyles[tipo] ?? { variant: "default" as const, text: tipo };
 
-  return <Badge variant={style.variant}>{style.text}</Badge>;
+  return (
+    <Badge variant={style.variant} className={style.className}>
+      {style.text}
+    </Badge>
+  );
 };
 
 function hasRangeScale(tipo: TipoMetricaEnum): boolean {
-  return tipo === TipoMetricaEnum.ECONOMICA || tipo === TipoMetricaEnum.DEMOGRAFICA;
+  return (
+    tipo === TipoMetricaEnum.ECONOMICA ||
+    tipo === TipoMetricaEnum.DEMOGRAFICA ||
+    tipo === TipoMetricaEnum.PRENSA
+  );
+}
+
+function canConfigureVista(tipo: TipoMetricaEnum): boolean {
+  return (
+    tipo === TipoMetricaEnum.ECONOMICA ||
+    tipo === TipoMetricaEnum.DEMOGRAFICA ||
+    tipo === TipoMetricaEnum.PRENSA
+  );
 }
 
 function TrimestreBadge({ metrica }: { metrica: MetricaItem }) {
@@ -108,12 +129,34 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
     }
   };
 
+  const handleVistaToggle = async (
+    metricId: number,
+    field: "mostrar_cruce" | "mostrar_hotspots",
+    next: boolean,
+  ) => {
+    const previous = metricas.find(m => m.id === metricId);
+    setMetricas(current =>
+      current.map(m => m.id === metricId ? { ...m, [field]: next } : m)
+    );
+    try {
+      await updateMetricaVista(metricId, { [field]: next });
+      toast.success(field === "mostrar_cruce" ? "Cruce actualizado" : "Hotspots actualizado");
+    } catch {
+      toast.error("Error al actualizar la vista");
+      if (previous) {
+        setMetricas(current =>
+          current.map(m => m.id === metricId ? { ...m, [field]: previous[field] } : m)
+        );
+      }
+    }
+  };
+
   return (
     <div className="flex h-screen flex-col">
       <div className="border-b border-primary/15 bg-primary/[0.07] px-6 py-4">
         <h1 className="text-2xl font-semibold">Gestión de Métricas</h1>
         <p className="text-sm text-muted-foreground">
-          Activá métricas para el mapa y configurá la escala del slider de filtro (lineal o logarítmica).
+          Activá métricas para el mapa. Cruce = scatter electoral; Hotspots = puntos sobre el mapa (útil en prensa).
         </p>
       </div>
 
@@ -127,18 +170,20 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[35%]">Métrica</TableHead>
+                    <TableHead className="w-[28%]">Métrica</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Trimestre EPH</TableHead>
-                    <TableHead>Archivo de Origen</TableHead>
-                    <TableHead>Escala de filtro</TableHead>
+                    <TableHead>Archivo</TableHead>
+                    <TableHead>Escala</TableHead>
+                    <TableHead className="text-center">Cruce</TableHead>
+                    <TableHead className="text-center">Hotspots</TableHead>
                     <TableHead className="text-right">Activa</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {metricas.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                         No se encontraron métricas. Sube un archivo para generarlas.
                       </TableCell>
                     </TableRow>
@@ -165,7 +210,7 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
                               value={metrica.escala_rango ?? "auto"}
                               onValueChange={(value) => handleEscalaChange(metrica.id, value)}
                             >
-                              <SelectTrigger className="w-[150px] bg-white hover:bg-white">
+                              <SelectTrigger className="w-[130px] bg-white hover:bg-white">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -174,6 +219,28 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
                                 <SelectItem value="log">Logarítmica</SelectItem>
                               </SelectContent>
                             </Select>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {canConfigureVista(metrica.tipo) ? (
+                            <Switch
+                              checked={metrica.mostrar_cruce !== false}
+                              onCheckedChange={(v) => handleVistaToggle(metrica.id, "mostrar_cruce", v)}
+                              aria-label={`Cruce ${metrica.nombre_amigable}`}
+                            />
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {canConfigureVista(metrica.tipo) ? (
+                            <Switch
+                              checked={metrica.mostrar_hotspots === true}
+                              onCheckedChange={(v) => handleVistaToggle(metrica.id, "mostrar_hotspots", v)}
+                              aria-label={`Hotspots ${metrica.nombre_amigable}`}
+                            />
                           ) : (
                             <span className="text-sm text-muted-foreground">—</span>
                           )}

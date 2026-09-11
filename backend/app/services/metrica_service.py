@@ -126,9 +126,31 @@ async def update_metric_scale(
     metric = result.scalars().first()
     if not metric:
         return None
-    if metric.tipo not in (TipoMetrica.ECONOMICA, TipoMetrica.DEMOGRAFICA):
+    if metric.tipo not in (TipoMetrica.ECONOMICA, TipoMetrica.DEMOGRAFICA, TipoMetrica.PRENSA):
         return None
     metric.escala_rango = escala_rango
+    await db.commit()
+    await db.refresh(metric)
+    return schemas.Metrica.model_validate(metric)
+
+
+async def update_metric_vista(
+    db: AsyncSession,
+    metric_id: int,
+    *,
+    mostrar_cruce: bool | None = None,
+    mostrar_hotspots: bool | None = None,
+) -> schemas.Metrica | None:
+    result = await db.execute(
+        select(Metricas).options(selectinload(Metricas.archivo)).where(Metricas.id == metric_id)
+    )
+    metric = result.scalars().first()
+    if not metric:
+        return None
+    if mostrar_cruce is not None:
+        metric.mostrar_cruce = mostrar_cruce
+    if mostrar_hotspots is not None:
+        metric.mostrar_hotspots = mostrar_hotspots
     await db.commit()
     await db.refresh(metric)
     return schemas.Metrica.model_validate(metric)

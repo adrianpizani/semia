@@ -152,6 +152,9 @@ export default function DashboardPage() {
             selectedCircuito={selectedCircuito}
             highlightParty={view.selectedParty}
             secondaryByGeo={secondaryByGeo}
+            hotspotMetrics={view.hotspotSecondaries}
+            hotspotDataByMetric={view.secondaryMetricsData}
+            onHotspotSelect={handleCrucePointClick}
           />
         </div>
         <div className="flex-[2] space-y-4 overflow-y-auto">

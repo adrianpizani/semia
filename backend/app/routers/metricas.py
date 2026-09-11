@@ -46,7 +46,7 @@ async def update_metric_scale(
 ):
     """
     Configura la escala del slider de rango (log / lineal / automática).
-    Solo aplica a métricas numéricas (económicas o demográficas).
+    Solo aplica a métricas numéricas (económicas, demográficas o prensa).
     """
     metric = await metrica_service.update_metric_scale(db, metric_id, body.escala_rango)
     if not metric:
@@ -55,8 +55,29 @@ async def update_metric_scale(
             raise HTTPException(status_code=404, detail="Metrica no encontrada")
         raise HTTPException(
             status_code=400,
-            detail="La escala de rango solo aplica a métricas económicas o demográficas.",
+            detail="La escala de rango solo aplica a métricas económicas, demográficas o prensa.",
         )
+    return metric
+
+
+@router.patch("/{metric_id}/vista", response_model=schemas.Metrica)
+async def update_metric_vista(
+    metric_id: int,
+    body: schemas.MetricaVistaUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin = Depends(require_admin),
+):
+    """Activa/desactiva cruce (scatter) y hotspots en el mapa para esta métrica."""
+    if body.mostrar_cruce is None and body.mostrar_hotspots is None:
+        raise HTTPException(status_code=400, detail="Nada para actualizar")
+    metric = await metrica_service.update_metric_vista(
+        db,
+        metric_id,
+        mostrar_cruce=body.mostrar_cruce,
+        mostrar_hotspots=body.mostrar_hotspots,
+    )
+    if not metric:
+        raise HTTPException(status_code=404, detail="Metrica no encontrada")
     return metric
 
 @router.post("/{metric_id}/data", response_model=List[schemas.GeoDataElectoral])

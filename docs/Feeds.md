@@ -40,26 +40,29 @@ Configuración de conectores converge en **Feed APIs** + hub **Configuración** 
 Alcance cerrado a propósito:
 
 1. Fuentes en tabla **`feed_sources`** (CRUD en Configuración → Web).
-2. Fetch manual **«Actualizar ahora»** (`POST /api/v1/feeds/web/fetch`) con `feedparser` + deduplicación por GUID.
+2. Fetch manual **«Actualizar ahora»**: la UI orquesta `POST /api/v1/feeds/web/fetch/{source_id}` por cada fuente activa (timeout HTTP ~12s) y al final `POST …/fetch/purge`. Así se evita el 504 de nginx del batch único. Queda `POST /fetch` como batch (cron/debug; puede timeout detrás del proxy).
 3. Ítems en **`feed_web_items`**; retención según `feeds.web.retention_days`.
 4. Diccionario catalogador en tabla **`feed_web_dict_entries`** (texto, alias, tipo, activa) — **no** en `workspace_config`. Seed inicial + CRUD en **`/feeds/web`**.
-5. Etiquetado por match de diccionario → bolsón en `feed_web_tags` + vínculo ítem–tag. Sin LLM (por ahora).
+5. Etiquetado por match de diccionario → bolsón en `feed_web_tags` + vínculo ítem–tag. Sin LLM (por ahora). Medios locales pueden tener **`feed_sources.municipio_default`**: todo titular de esa fuente recibe ese tag municipio automáticamente.
 6. Curación en **`/feeds/web`**: eliminar titulares irrelevantes; editar tags a mano; «Reaplicar diccionario» por ítem.
 7. Filtros por portal y por **tags ya descubiertos**; resumen (conteo, fuentes activas, última actualización, top tags).
-8. Políticas en `workspace_config.document.feeds.web` (`fetch_interval_min`, `retention_days`, `classify_territorial`) — live paths en el hub. Fuentes y políticas siguen en Config; el diccionario vive en Feed web.
+8. Políticas en `workspace_config.document.feeds.web` (`fetch_interval_min`, `retention_days`, `classify_territorial`, `import_untagged`) — live paths en el hub. Fuentes y políticas siguen en Config; el diccionario vive en Feed web. Con `import_untagged=false` (default), el fetch omite titulares sin match de diccionario.
+
+**Medios locales:** relevamiento en `data/medios_municipios_buenos_aires_rss.xlsx`; probe en `data/medios_rss_probe.json` (~40 RSS OK de ~129). Seed vía `POST /feeds/web/sources/seed-locals` (archivo `backend/static/reference/feed_web_local_sources.json`).
+
 
 **Modelo de sentido = bolsón de tags**, no una sola dimensión fija. Un titular puede llevar varios tags; los filtros de la UI solo ofrecen etiquetas que ya aparecieron en el corpus.
 
-**Qué queda fuera (fase 2+):** publicar hechos al mapa / Gestión de métricas; cron de producción; scraping HTML / Google News; **IA para etiquetar** (reemplazaría la edición manual); soft-delete / bloqueo de reingesta tras borrar; sentimiento o ranking de “importancia”.
+**Qué queda fuera (fase 2+):** cron de producción; scraping HTML / Google News; **IA para etiquetar**; soft-delete / bloqueo de reingesta tras borrar; métrica custom por un solo tema (UI); sentimiento / peso por medio.
 
-**Métrica futura (solo diseño):** al cliente le interesa “de qué se habla” en los municipios. Candidatos naturales cuando haya datos: **ocurrencia** (conteos) o **importancia** (ponderación por fuente/recencia). Se define con evidencia real.
+**Agenda «Qué se está diciendo» (publish):** `POST /feeds/web/publish-agenda` agrega pares tema×municipio en una ventana (conteo o peso por recencia), resuelve tags municipio → `dimension_geografica` (Partido) y **actualiza** métricas tipo **`PRENSA`** con `nombre_clave` estable (`prensa_salud`, …). Defaults de vista: **hotspots on / cruce off** (configurable en `/metricas`). Republicar **reemplaza** `hechos_datos` de esas claves; no crea métricas duplicadas ni pisa `is_active` ni preferencias de vista ya guardadas. Activar en `/metricas` para verlas como secundaria: puntos pulsantes en el mapa; el scatter solo si se activa «Cruce».
 
-**API (prefijo `/api/v1/feeds/web`):** sources CRUD, `POST /fetch`, items (`GET` / `DELETE` / `PUT …/tags` / `POST …/retags`), dictionary CRUD, `GET /tags`, `GET /summary`.
+**API (prefijo `/api/v1/feeds/web`):** sources CRUD, `POST /fetch/{source_id}`, `POST /fetch/purge`, `POST /fetch` (batch), `POST /publish-agenda`, items (`GET` / `DELETE` / `PUT …/tags` / `POST …/retags`), dictionary CRUD, `GET /tags`, `GET /summary`.
 
-**Salida hacia Semia (fase 2, ejemplos):**
-- Cobertura mediática 7d por municipio o tema
-- Menciones por partido en prensa
-- Índice de “presencia en agenda” por territorio
+**Salida hacia Semia (ejemplos):**
+- Métricas `prensa_<tema>` por municipio (ocurrencia / recencia) — tipo `PRENSA`, hotspots por default
+- (Futuro) métrica custom “Salud caliente” para filtrar municipios
+- Menciones por fuerza política en prensa (no implementado)
 
 **Nota:** preferir **RSS/API oficial**; scraping solo donde no haya alternativa, siempre con fuente + fecha.
 

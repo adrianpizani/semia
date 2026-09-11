@@ -337,14 +337,18 @@ export function FilterBar({
   );
 
   // Renderiza el filtro correspondiente a una métrica según su tipo.
-  // Numéricas no-electorales (ECONOMICA, DEMOGRAFICA) usan el mismo slider de rango;
+  // Numéricas no-electorales (ECONOMICA, DEMOGRAFICA, PRENSA) usan el mismo slider de rango;
   // eso evita que un Poblacion_Total o un Indice_NBI queden sin UI de filtro
   // cuando el usuario los marca como DEMOGRAFICA al subir el CSV.
   const renderMetricFilter = (metric: Metrica) => {
     if (metric.tipo === TipoMetricaEnum.ELECTORAL) {
       return <ElectoralFilter key={metric.id} metric={metric} filters={filters} onDimensionFilterChange={updateDimensionFilter} availableParties={availableParties} availableYears={availableYears} availableVoteTypes={availableVoteTypes} />;
     }
-    if (metric.tipo === TipoMetricaEnum.ECONOMICA || metric.tipo === TipoMetricaEnum.DEMOGRAFICA) {
+    if (
+      metric.tipo === TipoMetricaEnum.ECONOMICA ||
+      metric.tipo === TipoMetricaEnum.DEMOGRAFICA ||
+      metric.tipo === TipoMetricaEnum.PRENSA
+    ) {
       const savedRange = filters.find((f): f is FiltroRango => f.tipo === "rango" && f.metrica_id === metric.id);
       return <RangeFilter key={metric.id} metric={metric} range={metricRanges[metric.id]} initialWin={savedRange?.rango} onFilterChange={updateOrRemoveFilter} resetSignal={rangeResetSignal} />;
     }
@@ -354,7 +358,11 @@ export function FilterBar({
   // Sólo renderizamos el separador+ filtro cuando la métrica tiene un componente de filtro.
   const primaryFilter = primaryMetric ? renderMetricFilter(primaryMetric) : null;
   const secondaryFilters = secondaryMetrics.filter(
-    m => m.tipo === TipoMetricaEnum.ELECTORAL || m.tipo === TipoMetricaEnum.ECONOMICA || m.tipo === TipoMetricaEnum.DEMOGRAFICA
+    m =>
+      m.tipo === TipoMetricaEnum.ELECTORAL ||
+      m.tipo === TipoMetricaEnum.ECONOMICA ||
+      m.tipo === TipoMetricaEnum.DEMOGRAFICA ||
+      m.tipo === TipoMetricaEnum.PRENSA
   );
 
   // Elimina un solo filtro (por dimensión en categóricos, o el rango de la métrica).

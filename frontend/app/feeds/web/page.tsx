@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Loader2, Plus, RefreshCw, Tags, Trash2, X } from "lucide-react"
+import { Loader2, Plus, RefreshCw, Sparkles, Tags, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -15,23 +15,74 @@ import {
   createFeedWebDictEntry,
   deleteFeedWebDictEntry,
   deleteFeedWebItem,
-  fetchFeedWebNow,
+  fetchFeedWebSource,
   getFeedWebSummary,
   listFeedWebDictionary,
   listFeedWebItems,
   listFeedWebSources,
   listFeedWebTags,
+  publishFeedWebAgenda,
+  purgeFeedWebRetention,
   retagFeedWebItem,
   setFeedWebItemTags,
   updateFeedWebDictEntry,
   type FeedSource,
+  type FeedWebAgendaPublishResult,
   type FeedWebDictEntry,
   type FeedWebItem,
   type FeedWebSummary,
   type FeedWebTag,
 } from "@/lib/api"
+import { getFeedTagBadgeStyle, getFeedTagColor } from "@/lib/feed-tag-color"
 
 const DICT_TIPOS = ["municipio", "partido", "tema", "otro"] as const
+
+function FeedTagChip({
+  texto,
+  tipo,
+  count,
+  onRemove,
+  onClick,
+  disabled,
+}: {
+  texto: string
+  tipo?: string | null
+  count?: number | null
+  onRemove?: () => void
+  onClick?: () => void
+  disabled?: boolean
+}) {
+  const style = getFeedTagBadgeStyle(texto, tipo)
+  return (
+    <Badge
+      variant="outline"
+      className="gap-1 border pr-1 text-[10px] font-medium"
+      style={style}
+    >
+      <button
+        type="button"
+        className={onClick ? "hover:underline" : "cursor-default"}
+        onClick={onClick}
+        disabled={!onClick}
+      >
+        {texto}
+        {tipo ? ` · ${tipo}` : ""}
+        {count != null ? ` · ${count}` : ""}
+      </button>
+      {onRemove && (
+        <button
+          type="button"
+          className="rounded-sm p-0.5 opacity-70 hover:bg-black/5 hover:opacity-100"
+          disabled={disabled}
+          onClick={onRemove}
+          aria-label={`Quitar ${texto}`}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </Badge>
+  )
+}
 
 function formatWhen(iso: string | null | undefined): string {
   if (!iso) return "—"
@@ -45,6 +96,64 @@ function formatWhen(iso: string | null | undefined): string {
   } catch {
     return iso
   }
+}
+
+type AgendaRow = {
+  municipio: string
+  temas: Array<{ texto: string; count: number }>
+  total: number
+}
+
+/** Preview client-side: pares municipio×tema a partir de los titulares cargados. */
+function buildAgendaPreview(items: FeedWebItem[]): AgendaRow[] {
+  const byMuni = new Map<string, Map<string, number>>()
+  for (const item of items) {
+    const municipios = item.tags.filter((t) => t.tipo === "municipio").map((t) => t.texto)
+    const temas = item.tags.filter((t) => t.tipo === "tema").map((t) => t.texto)
+    if (municipios.length === 0 || temas.length === 0) continue
+    for (const muni of municipios) {
+      let temaMap = byMuni.get(muni)
+      if (!temaMap) {
+        temaMap = new Map()
+        byMuni.set(muni, temaMap)
+      }
+      for (const tema of temas) {
+        temaMap.set(tema, (temaMap.get(tema) || 0) + 1)
+      }
+    }
+  }
+  const rows: AgendaRow[] = []
+  for (const [municipio, temaMap] of byMuni) {
+    const temas = [...temaMap.entries()]
+      .map(([texto, count]) => ({ texto, count }))
+      .sort((a, b) => b.count - a.count)
+    const total = temas.reduce((s, t) => s + t.count, 0)
+    rows.push({ municipio, temas, total })
+  }
+  return rows.sort((a, b) => b.total - a.total).slice(0, 12)
+}
+
+function LinternaChip({ texto, count, max }: { texto: string; count: number; max: number }) {
+  const style = getFeedTagBadgeStyle(texto, "tema")
+  const intensity = max > 0 ? 0.35 + (count / max) * 0.65 : 0.5
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+      style={{
+        ...style,
+        opacity: intensity,
+        boxShadow: `0 0 0 ${1 + Math.min(count, 4)}px ${style.borderColor}`,
+      }}
+      title={`${texto}: ${count}`}
+    >
+      <span
+        className="h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: getFeedTagColor(texto, "tema") }}
+      />
+      {texto}
+      <span className="tabular-nums opacity-80">{count}</span>
+    </span>
+  )
 }
 
 function ItemTagEditor({
@@ -105,21 +214,13 @@ function ItemTagEditor({
     <div className="mt-2 space-y-2">
       <div className="flex flex-wrap gap-1.5">
         {item.tags.map((t) => (
-          <Badge key={t.id} variant="secondary" className="gap-1 pr-1 text-[10px]">
-            <span>
-              {t.texto}
-              {t.tipo ? ` · ${t.tipo}` : ""}
-            </span>
-            <button
-              type="button"
-              className="rounded-sm p-0.5 hover:bg-muted"
-              disabled={disabled}
-              onClick={() => removeTag(t.id)}
-              aria-label={`Quitar ${t.texto}`}
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </Badge>
+          <FeedTagChip
+            key={t.id}
+            texto={t.texto}
+            tipo={t.tipo}
+            disabled={disabled}
+            onRemove={() => removeTag(t.id)}
+          />
         ))}
         {item.tags.length === 0 && (
           <span className="text-[11px] text-muted-foreground">Sin tags</span>
@@ -167,6 +268,7 @@ function ItemTagEditor({
 export default function FeedWebPage() {
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
+  const [fetchProgress, setFetchProgress] = useState<string | null>(null)
   const [itemBusy, setItemBusy] = useState(false)
   const [dictBusy, setDictBusy] = useState(false)
   const [items, setItems] = useState<FeedWebItem[]>([])
@@ -180,6 +282,12 @@ export default function FeedWebPage() {
   const [newTexto, setNewTexto] = useState("")
   const [newAlias, setNewAlias] = useState("")
   const [newTipo, setNewTipo] = useState<string>("tema")
+  const [metricWindow, setMetricWindow] = useState("7")
+  const [metricScore, setMetricScore] = useState("count")
+  const [minScore, setMinScore] = useState("2")
+  const [minMunicipios, setMinMunicipios] = useState("2")
+  const [publishing, setPublishing] = useState(false)
+  const [lastPublish, setLastPublish] = useState<FeedWebAgendaPublishResult | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -214,24 +322,63 @@ export default function FeedWebPage() {
     return dictEntries.filter((e) => e.tipo === dictTipoFilter)
   }, [dictEntries, dictTipoFilter])
 
+  const agendaPreview = useMemo(() => buildAgendaPreview(items), [items])
+  const agendaMaxTema = useMemo(() => {
+    let max = 1
+    for (const row of agendaPreview) {
+      for (const t of row.temas) max = Math.max(max, t.count)
+    }
+    return max
+  }, [agendaPreview])
+
   const handleFetch = async () => {
     setFetching(true)
+    setFetchProgress(null)
     try {
-      const result = await fetchFeedWebNow()
+      const allSources = sources.length ? sources : await listFeedWebSources()
+      if (!sources.length) setSources(allSources)
+      const active = allSources.filter((s) => s.activa)
+      if (active.length === 0) {
+        toast.error("No hay fuentes activas")
+        return
+      }
+
+      let inserted = 0
+      let skippedUntagged = 0
+      let failed = 0
+
+      for (let i = 0; i < active.length; i++) {
+        const src = active[i]
+        setFetchProgress(`${i + 1}/${active.length} · ${src.nombre}`)
+        try {
+          const report = await fetchFeedWebSource(src.id)
+          inserted += report.inserted || 0
+          skippedUntagged += report.skipped_untagged || 0
+          if (!report.ok) failed += 1
+        } catch {
+          failed += 1
+        }
+      }
+
+      setFetchProgress("Retención…")
+      const purge = await purgeFeedWebRetention().catch(() => ({ purged: 0 }))
+
       toast.success(
-        `Actualizado: +${result.inserted} titulares` +
-          (result.purged ? ` · ${result.purged} fuera de retención` : ""),
+        `Actualizado: +${inserted} titulares` +
+          (skippedUntagged ? ` · ${skippedUntagged} sin tags omitidos` : "") +
+          (purge.purged ? ` · ${purge.purged} fuera de retención` : "") +
+          (failed ? ` · ${failed} fuentes con error` : ""),
       )
       await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo actualizar")
     } finally {
       setFetching(false)
+      setFetchProgress(null)
     }
   }
 
   const handleDeleteItem = async (item: FeedWebItem) => {
-    if (!confirm(`¿Eliminar titular «${item.titulo.slice(0, 80)}»?`)) return
     setItemBusy(true)
     try {
       await deleteFeedWebItem(item.id)
@@ -271,11 +418,38 @@ export default function FeedWebPage() {
     }
   }
 
+  const handlePublishAgenda = async () => {
+    setPublishing(true)
+    try {
+      const result = await publishFeedWebAgenda({
+        window_days: Number(metricWindow) || 7,
+        score: metricScore === "recency" ? "recency" : "count",
+        min_score: Number(minScore) || 2,
+        min_municipios: Number(minMunicipios) || 2,
+        require_variance: true,
+      })
+      setLastPublish(result)
+      if (!result.ok) {
+        toast.error(result.error || "Nada para publicar")
+        return
+      }
+      toast.success(
+        `Agenda: ${result.metricas.length} métricas · ${result.hechos} hechos` +
+          (result.metricas_limpiadas ? ` · ${result.metricas_limpiadas} limpiadas` : ""),
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo publicar")
+    } finally {
+      setPublishing(false)
+    }
+  }
+
   return (
     <FeedShell
       live
+      wide
       title="Feed web"
-      description="Titulares RSS con curación: diccionario en tabla, edición manual de tags y descarte de irrelevantes."
+      description="Curación de titulares a la izquierda; corpus al centro; creador de métricas a la derecha."
       actions={
         <>
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
@@ -316,22 +490,23 @@ export default function FeedWebPage() {
             ) : (
               <RefreshCw className="mr-1 h-4 w-4" />
             )}
-            Actualizar ahora
+            {fetching && fetchProgress ? fetchProgress : "Actualizar ahora"}
           </Button>
         </>
       }
     >
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <Card className="border-border/80 bg-white shadow-sm">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.85fr)_minmax(300px,0.95fr)]">
+        {/* Columna 1 — Titulares */}
+        <Card className="border-border/80 bg-white shadow-sm xl:min-h-[70vh]">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Titulares</CardTitle>
             <CardDescription>
               {loading
                 ? "Cargando…"
-                : `${items.length} mostrados · eliminar o recatalogar cada uno`}
+                : `${items.length} mostrados · eliminar o recatalogar`}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="max-h-[calc(100vh-12rem)] space-y-3 overflow-y-auto">
             {loading && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -384,6 +559,7 @@ export default function FeedWebPage() {
           </CardContent>
         </Card>
 
+        {/* Columna 2 — Resumen + Diccionario */}
         <div className="space-y-4">
           <Card className="border-border/80 bg-white shadow-sm">
             <CardHeader className="pb-3">
@@ -409,15 +585,13 @@ export default function FeedWebPage() {
                   <p className="mb-1.5 text-xs font-medium text-muted-foreground">Top tags</p>
                   <div className="flex flex-wrap gap-1.5">
                     {summary.top_tags.map((t) => (
-                      <Badge
+                      <FeedTagChip
                         key={t.id}
-                        variant="outline"
-                        className="cursor-pointer text-[10px]"
+                        texto={t.texto}
+                        tipo={t.tipo}
+                        count={t.count}
                         onClick={() => setTagFilter(t.texto)}
-                      >
-                        {t.texto}
-                        {t.count != null ? ` · ${t.count}` : ""}
-                      </Badge>
+                      />
                     ))}
                   </div>
                 </div>
@@ -430,12 +604,10 @@ export default function FeedWebPage() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <CardTitle className="text-base">Diccionario</CardTitle>
-                  <CardDescription>
-                    Alias activos para clasificar al fetch / reaplicar. No vive en Configuración.
-                  </CardDescription>
+                  <CardDescription>Alias para clasificar al fetch / reaplicar.</CardDescription>
                 </div>
                 <Select value={dictTipoFilter} onValueChange={setDictTipoFilter}>
-                  <SelectTrigger className="h-8 w-[130px] bg-white text-xs">
+                  <SelectTrigger className="h-8 w-[110px] bg-white text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -450,7 +622,7 @@ export default function FeedWebPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+              <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
                 {filteredDict.length === 0 && (
                   <p className="text-sm text-muted-foreground">Sin entradas.</p>
                 )}
@@ -459,6 +631,11 @@ export default function FeedWebPage() {
                     key={entry.id}
                     className="flex items-center gap-2 rounded-md border border-border/60 px-2 py-1.5"
                   >
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: getFeedTagColor(entry.texto, entry.tipo) }}
+                      title={entry.tipo}
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-medium">
                         {entry.texto}{" "}
@@ -546,23 +723,202 @@ export default function FeedWebPage() {
               </div>
             </CardContent>
           </Card>
-
-          <Card className="border-dashed border-primary/25 bg-white/80 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Métricas (próxima fase)</CardTitle>
-              <CardDescription>
-                Todavía no se publica nada al mapa ni al catálogo de métricas.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Fuentes y políticas en{" "}
-              <Link href="/configuracion" className="underline underline-offset-2">
-                Configuración → Web
-              </Link>
-              . Diccionario y curación de titulares, acá.
-            </CardContent>
-          </Card>
         </div>
+
+        <Card className="border-border/80 bg-white shadow-sm xl:min-h-[70vh]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Creador de métricas</CardTitle>
+            <CardDescription>
+              Preset «Qué se está diciendo». Umbrales evitan métricas planas (rango 1–1) que no
+              se ven en el mapa.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-3">
+              <div className="mb-1 flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Qué se está diciendo</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Solo publica temas con variación real entre municipios. Una sola mención no alcanza.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-medium text-muted-foreground">Ventana</p>
+                <Select value={metricWindow} onValueChange={setMetricWindow}>
+                  <SelectTrigger className="h-8 bg-white text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7">Últimos 7 días</SelectItem>
+                    <SelectItem value="14">Últimos 14 días</SelectItem>
+                    <SelectItem value="30">Últimos 30 días</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-medium text-muted-foreground">Score</p>
+                <Select value={metricScore} onValueChange={setMetricScore}>
+                  <SelectTrigger className="h-8 bg-white text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="count">Ocurrencias</SelectItem>
+                    <SelectItem value="recency">Peso por recencia</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-medium text-muted-foreground">Mín. menciones</p>
+                <Select value={minScore} onValueChange={setMinScore}>
+                  <SelectTrigger className="h-8 bg-white text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">≥ 1 (todo)</SelectItem>
+                    <SelectItem value="2">≥ 2</SelectItem>
+                    <SelectItem value="3">≥ 3</SelectItem>
+                    <SelectItem value="5">≥ 5</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-medium text-muted-foreground">Mín. municipios</p>
+                <Select value={minMunicipios} onValueChange={setMinMunicipios}>
+                  <SelectTrigger className="h-8 bg-white text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">≥ 1</SelectItem>
+                    <SelectItem value="2">≥ 2</SelectItem>
+                    <SelectItem value="3">≥ 3</SelectItem>
+                    <SelectItem value="5">≥ 5</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">
+                Preview linternitas
+                {metricScore === "recency"
+                  ? " · (preview = conteo; al publicar usa peso por recencia)"
+                  : ""}
+              </p>
+              {agendaPreview.length === 0 ? (
+                <p className="rounded-md border border-dashed border-border/70 px-3 py-4 text-xs text-muted-foreground">
+                  Sin pares municipio × tema en los titulares cargados. Etiquetá o actualizá el feed.
+                </p>
+              ) : (
+                <div className="max-h-[32vh] space-y-2.5 overflow-y-auto pr-1">
+                  {agendaPreview.map((row) => (
+                    <div
+                      key={row.municipio}
+                      className="rounded-md border border-border/60 px-2.5 py-2"
+                    >
+                      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                        <p className="truncate text-xs font-medium">{row.municipio}</p>
+                        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                          {row.total}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {row.temas.slice(0, 6).map((t) => (
+                          <LinternaChip
+                            key={t.texto}
+                            texto={t.texto}
+                            count={t.count}
+                            max={agendaMaxTema}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2 border-t border-border/60 pt-3">
+              <Button
+                className="w-full"
+                disabled={publishing || loading}
+                onClick={handlePublishAgenda}
+              >
+                {publishing ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : null}
+                Actualizar métricas en el mapa
+              </Button>
+              {lastPublish && (
+                <div className="rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-[11px] text-muted-foreground">
+                  {lastPublish.ok ? (
+                    <>
+                      <p>
+                        {lastPublish.metricas.length} métricas · {lastPublish.hechos} hechos ·
+                        umbral ≥{lastPublish.min_score}/{lastPublish.min_municipios} mun.
+                      </p>
+                      {lastPublish.metricas.slice(0, 6).map((m) => (
+                        <p key={m.clave} className="truncate">
+                          {m.nombre_amigable}
+                          {m.valor_min != null && m.valor_max != null
+                            ? ` · ${m.valor_min}–${m.valor_max}`
+                            : ""}
+                          {m.is_active ? "" : " · borrador"}
+                        </p>
+                      ))}
+                      {(lastPublish.skipped_temas?.length ?? 0) > 0 && (
+                        <p className="mt-1 text-amber-800">
+                          Omitidos: {lastPublish.skipped_temas!.slice(0, 3).map((s) => s.tema).join(", ")}
+                          {lastPublish.skipped_temas!.length > 3 ? "…" : ""}
+                        </p>
+                      )}
+                      {(lastPublish.skipped_low_score ?? 0) > 0 && (
+                        <p className="text-amber-800">
+                          {lastPublish.skipped_low_score} pares bajo mín. menciones
+                        </p>
+                      )}
+                      {lastPublish.unresolved_municipios.length > 0 && (
+                        <p className="text-amber-800">
+                          Sin geo: {lastPublish.unresolved_municipios.slice(0, 5).join(", ")}
+                          {lastPublish.unresolved_municipios.length > 5 ? "…" : ""}
+                        </p>
+                      )}
+                      <p className="mt-1">
+                        Activá en{" "}
+                        <Link href="/metricas" className="underline underline-offset-2">
+                          /metricas
+                        </Link>
+                        . Republicar limpia hechos viejos de temas que ya no califican.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p>{lastPublish.error}</p>
+                      {(lastPublish.skipped_temas?.length ?? 0) > 0 && (
+                        <p className="mt-1">
+                          {lastPublish.skipped_temas!.slice(0, 4).map((s) => (
+                            <span key={s.tema} className="block">
+                              {s.tema}: {s.reason}
+                            </span>
+                          ))}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Default ≥2 menciones y ≥2 municipios con variación. Bajá umbrales solo para
+                probar; con corpus chico puede no publicar nada (mejor que pintar ruido).
+              </p>
+              <Button variant="outline" className="w-full bg-white" disabled>
+                Crear métrica custom…
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </FeedShell>
   )

@@ -22,6 +22,7 @@ export enum TipoMetricaEnum {
   GEOGRAFICA = "GEOGRAFICA",
   TEMPORAL = "TEMPORAL",
   ECONOMICA = "ECONOMICA",
+  PRENSA = "PRENSA",
 }
 
 export interface Metrica {
@@ -30,6 +31,8 @@ export interface Metrica {
   is_active: boolean;
   tipo: TipoMetricaEnum;
   escala_rango?: 'log' | 'linear' | null;
+  mostrar_cruce?: boolean;
+  mostrar_hotspots?: boolean;
   archivo?: {
     id: number;
     nombre_visible: string;

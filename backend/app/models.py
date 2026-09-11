@@ -79,6 +79,7 @@ class TipoMetrica(enum.Enum):
     GEOGRAFICA = "GEOGRAFICA"
     TEMPORAL = "TEMPORAL"
     ECONOMICA = "ECONOMICA"
+    PRENSA = "PRENSA"
 
 class Metricas(Base):
     __tablename__ = "metricas"
@@ -90,6 +91,9 @@ class Metricas(Base):
     is_active = Column(Boolean, default=False, nullable=False)
     # 'log' | 'linear' | NULL (automática según dispersión de la muestra)
     escala_rango = Column(String, nullable=True)
+    # Vista en dashboard: cruce (scatter) y/o hotspots (puntos sobre el mapa).
+    mostrar_cruce = Column(Boolean, default=True, nullable=False)
+    mostrar_hotspots = Column(Boolean, default=False, nullable=False)
     archivo_id = Column(Integer, ForeignKey("archivos.id"), nullable=True)
     
     hechos = relationship("Hechos_Datos", back_populates="metrica")
@@ -201,6 +205,8 @@ class FeedSource(Base):
     nombre = Column(String, nullable=False)
     url = Column(String, nullable=False, unique=True)
     activa = Column(Boolean, default=True, nullable=False, index=True)
+    # Si está set, todo ítem de esta fuente recibe este tag tipo=municipio
+    municipio_default = Column(String, nullable=True, index=True)
     ultimo_fetch_at = Column(DateTime(timezone=True), nullable=True)
     ultimo_error = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
