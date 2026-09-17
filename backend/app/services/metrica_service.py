@@ -50,7 +50,8 @@ async def _geos_for_filter(db: AsyncSession, filtro: schemas.AnyFiltro) -> set[i
 
 async def get_all_metrics(db: AsyncSession) -> list[schemas.Metrica]:
     """
-    Recupera todas las métricas, con trimestre EPH vigente cuando aplica.
+    Recupera todas las métricas, con trimestre EPH vigente cuando aplica
+    y nivel geográfico dominante inferido de sus hechos.
     """
     from services.eph_microdata_service import EPH_INDICATORS
     from services.feed_socio_service import fecha_to_periodo, get_or_create_feed_socio_config
@@ -58,6 +59,22 @@ async def get_all_metrics(db: AsyncSession) -> list[schemas.Metrica]:
     query = select(Metricas).options(selectinload(Metricas.archivo))
     result = await db.execute(query)
     db_metrics = result.scalars().unique().all()
+
+    nivel_by_metric: dict[int, str] = {}
+    nivel_rows = await db.execute(
+        select(
+            Hechos_Datos.metrica_id,
+            Dimension_Geografica.nivel,
+            func.count().label("n"),
+        )
+        .join(Dimension_Geografica, Hechos_Datos.geografia_id == Dimension_Geografica.id)
+        .group_by(Hechos_Datos.metrica_id, Dimension_Geografica.nivel)
+    )
+    best_count: dict[int, int] = {}
+    for metrica_id, nivel, n in nivel_rows.all():
+        if n > best_count.get(metrica_id, 0):
+            best_count[metrica_id] = n
+            nivel_by_metric[metrica_id] = nivel
 
     cfg = await get_or_create_feed_socio_config(db)
     trimestre_referencia = cfg.trimestre_referencia
@@ -79,6 +96,7 @@ async def get_all_metrics(db: AsyncSession) -> list[schemas.Metrica]:
     metrics_out: list[schemas.Metrica] = []
     for db_metric in db_metrics:
         metric = schemas.Metrica.model_validate(db_metric)
+        metric.nivel_geografico = nivel_by_metric.get(db_metric.id)
         if db_metric.nombre_clave not in eph_claves:
             metrics_out.append(metric)
             continue

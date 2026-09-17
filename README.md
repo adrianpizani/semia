@@ -42,13 +42,15 @@ URLs directas:
 | Frontend | http://localhost:3000 |
 | Backend / docs | http://localhost:8000/docs |
 
-Al arrancar, el backend corre `alembic upgrade head` y crea las tablas. La primera vez hay que sembrar geografía y el admin:
+Al arrancar, el backend corre `alembic upgrade head`, siembra **provincias + partidos**
+(`import_geojson`, idempotente) y el catálogo EPH. La primera vez aún hace falta:
 
 ```bash
-docker compose exec -e PYTHONPATH=/ backend python -m app.scripts.import_geojson
 docker compose exec -e PYTHONPATH=/ backend python -m app.scripts.import_circuitos
 docker compose exec -e PYTHONPATH=/ backend python -m app.scripts.create_admin
 ```
+
+(Si necesitás forzar el seed geo a mano: `docker compose exec backend python -c "import asyncio; from scripts.import_geojson import import_geojson_data; asyncio.run(import_geojson_data())"`.)
 
 Login: `admin@semia.studio` / `admin123` (cambiables con `ADMIN_EMAIL` / `ADMIN_PASSWORD` en `.env`).
 

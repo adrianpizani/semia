@@ -43,9 +43,10 @@ services:
     image: ${ECR_REGISTRY}/semia-backend:${IMAGE_TAG:-latest}
     build: ./backend
     # Sin bind-mounts: código, alembic, GeoJSON de seed (backend/static/)
-    # y el entrypoint van embebidos en la imagen. Al arrancar, el entrypoint
-    # corre `alembic upgrade head` y después uvicorn. El seed
-    # (import_geojson / import_circuitos) lee /app/static/*.geojson.
+    # y el entrypoint van embebidos en la imagen. Al arrancar: alembic,
+    # import_geojson (provincias + partidos) y seed EPH; después uvicorn.
+    # Circuitos siguen siendo seed manual (archivo grande).
+    # Volúmenes: solo el de datos de Postgres (vía servicio db).
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       SECRET_KEY: ${SECRET_KEY}

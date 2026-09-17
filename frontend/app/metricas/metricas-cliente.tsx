@@ -1,14 +1,23 @@
 'use client'
 
-import { useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge, BadgeProps } from "@/components/ui/badge"
-import { toggleMetrica, updateMetricaEscala, updateMetricaVista } from "@/lib/api"
+import { Button } from "@/components/ui/button"
+import {
+  labelForNivel,
+  MapModeSwitcher,
+  nivelForMapMode,
+} from "@/components/map-mode-switcher"
+import { getWorkspaceConfig, patchWorkspaceConfig, toggleMetrica, updateMetricaEscala, updateMetricaVista } from "@/lib/api"
 import { Metrica, TipoMetricaEnum } from "@/lib/types"
+import type { MapModo } from "@/hooks/use-map-view"
 
 interface ArchivoForMetrica {
   id: number;
@@ -89,6 +98,59 @@ function TrimestreBadge({ metrica }: { metrica: MetricaItem }) {
 
 export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
   const [metricas, setMetricas] = useState<MetricaItem[]>(initialMetricas);
+  const [mapModo, setMapModo] = useState<MapModo>("pba");
+  const [modoReady, setModoReady] = useState(false);
+  const [savingModo, setSavingModo] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await getWorkspaceConfig();
+        const defaults = (res.document.defaults as Record<string, unknown> | undefined) ?? {};
+        const mapa = (defaults.mapa as Record<string, unknown> | undefined) ?? {};
+        if (!cancelled && (mapa.modo === "pba" || mapa.modo === "nacional")) {
+          setMapModo(mapa.modo);
+        }
+      } catch {
+        // default pba
+      } finally {
+        if (!cancelled) setModoReady(true);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const nivelCapa = nivelForMapMode(mapModo);
+  const metricasCapa = useMemo(
+    () => metricas.filter(m => m.nivel_geografico === nivelCapa),
+    [metricas, nivelCapa],
+  );
+
+  const handleMapModoChange = useCallback(async (next: MapModo) => {
+    if (next === mapModo) return;
+    const previous = mapModo;
+    setMapModo(next);
+    setSavingModo(true);
+    try {
+      await patchWorkspaceConfig({
+        defaults: { mapa: { modo: next } },
+      });
+      toast.success(
+        next === "nacional"
+          ? "Capa nacional: solo métricas a nivel provincia"
+          : "Capa PBA: solo métricas a nivel partido",
+      );
+    } catch {
+      setMapModo(previous);
+      toast.error("No se pudo guardar el alcance del mapa");
+    } finally {
+      setSavingModo(false);
+    }
+  }, [mapModo]);
 
   const handleToggle = async (metricId: number) => {
     setMetricas(currentMetricas =>
@@ -156,22 +218,59 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
       <div className="border-b border-primary/15 bg-primary/[0.07] px-6 py-4">
         <h1 className="text-2xl font-semibold">Gestión de Métricas</h1>
         <p className="text-sm text-muted-foreground">
-          Activá métricas para el mapa. Cruce = scatter electoral; Hotspots = puntos sobre el mapa (útil en prensa).
+          Activá métricas de la capa actual del mapa. Cruce = scatter electoral; Hotspots = puntos
+          sobre el mapa (útil en prensa).
         </p>
       </div>
 
       <div className="flex-1 overflow-auto bg-amber-50/70 p-6">
-        <div className="mx-auto max-w-7xl">
+        <div className="mx-auto max-w-7xl space-y-6">
           <Card className="border-border/80 bg-white shadow-sm">
             <CardHeader>
-              <CardTitle>Métricas Disponibles</CardTitle>
+              <CardTitle>Capa del mapa</CardTitle>
+              <CardDescription>
+                Mismo setting que Configuración → Mapa (<code className="text-xs">defaults.mapa.modo</code>).
+                Solo se listan métricas con hechos en ese nivel geográfico.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {!modoReady ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Cargando alcance…
+                </div>
+              ) : (
+                <MapModeSwitcher
+                  value={mapModo}
+                  onChange={handleMapModoChange}
+                  disabled={savingModo}
+                />
+              )}
+              <p className="text-xs text-muted-foreground">
+                También podés cambiarlo en{" "}
+                <Button variant="link" className="h-auto p-0 text-xs" asChild>
+                  <Link href="/configuracion">Configuración → Mapa</Link>
+                </Button>
+                .
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/80 bg-white shadow-sm">
+            <CardHeader>
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle>Métricas de la capa</CardTitle>
+                <Badge variant="outline">{labelForNivel(nivelCapa)}</Badge>
+                <Badge variant="secondary">{metricasCapa.length}</Badge>
+              </div>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[28%]">Métrica</TableHead>
+                    <TableHead className="w-[24%]">Métrica</TableHead>
                     <TableHead>Tipo</TableHead>
+                    <TableHead>Nivel</TableHead>
                     <TableHead>Trimestre EPH</TableHead>
                     <TableHead>Archivo</TableHead>
                     <TableHead>Escala</TableHead>
@@ -181,18 +280,32 @@ export function MetricasCliente({ initialMetricas }: MetricasClienteProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {metricas.length === 0 ? (
+                  {!modoReady ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                        No se encontraron métricas. Sube un archivo para generarlas.
+                      <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                        <span className="inline-flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Filtrando por capa…
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ) : metricasCapa.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                        {mapModo === "nacional"
+                          ? "No hay métricas a nivel provincia. Cargá datos nacionales o volvé a la capa PBA."
+                          : "No se encontraron métricas a nivel partido. Subí un archivo para generarlas."}
                       </TableCell>
                     </TableRow>
                   ) : (
-                    metricas.map((metrica) => (
+                    metricasCapa.map((metrica) => (
                       <TableRow key={metrica.id}>
                         <TableCell className="font-medium">{metrica.nombre_amigable}</TableCell>
                         <TableCell>
                           <TipoMetricaBadge tipo={metrica.tipo} />
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{labelForNivel(metrica.nivel_geografico)}</Badge>
                         </TableCell>
                         <TableCell>
                           <TrimestreBadge metrica={metrica} />

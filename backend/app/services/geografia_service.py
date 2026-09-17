@@ -49,12 +49,17 @@ async def get_municipios_geojson(db: AsyncSession) -> dict:
     """
     return await _get_geografias_by_nivel_as_feature_collection(db, nivel="Partido")
 
+
+async def get_provincias_geojson(db: AsyncSession) -> dict:
+    """Returns all 'Provincia' level geographies as a GeoJSON FeatureCollection."""
+    return await _get_geografias_by_nivel_as_feature_collection(db, nivel="Provincia")
+
+
 async def get_circuitos_geojson(db: AsyncSession) -> dict:
     """
     Returns all 'Circuito' level geographies as a GeoJSON FeatureCollection.
     """
     return await _get_geografias_by_nivel_as_feature_collection(db, nivel="Circuito")
-
 
 async def get_geografias_with_data(db: AsyncSession, request: GeoDataRequest) -> dict:
     """

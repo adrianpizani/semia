@@ -210,7 +210,8 @@ Lecturas: `get_current_user`. Escrituras: `require_admin`. Login es el único fl
 | POST   | `/api/v1/auth/logout`                                 | Borra cookie                               |
 | GET    | `/api/v1/auth/me`                                     | Usuario de la sesión                       |
 | POST   | `/api/v1/auth/register`                               | Alta de usuario (solo admin)               |
-| GET    | `/api/v1/geografia/municipios/geojson`                | Municipios como FeatureCollection          |
+| GET    | `/api/v1/geografia/municipios/geojson`                | Partidos (PBA) como FeatureCollection      |
+| GET    | `/api/v1/geografia/provincias/geojson`                | Provincias como FeatureCollection          |
 | GET    | `/api/v1/geografia/circuitos/geojson`                 | Circuitos como FeatureCollection           |
 | GET    | `/api/v1/geografia`                                   | Lista plana de geografías                  |
 | POST   | `/api/v1/geografia`                                   | Crear geografía                            |

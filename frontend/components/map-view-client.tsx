@@ -1,5 +1,5 @@
 import { MapContainer, GeoJSON, TileLayer, LayersControl, LayerGroup, useMapEvents, useMap } from 'react-leaflet';
-import { useMapView } from '@/hooks/use-map-view';
+import { useMapView, type MapModo } from '@/hooks/use-map-view';
 import { useMemo, useCallback, useEffect, useRef } from 'react';
 import type { FeatureCollection } from 'geojson';
 import L, { type LatLngExpression } from 'leaflet';
@@ -21,10 +21,13 @@ interface MapViewClientProps {
   hotspotMetrics?: Metrica[];
   hotspotDataByMetric?: Record<number, GenericData[]>;
   onHotspotSelect?: (geografiaId: number, nombre: string) => void;
+  mapMode?: MapModo;
 }
 
 const PBA_CENTER: LatLngExpression = [-37.0, -60.0];
 const PBA_ZOOM = 7;
+const ARG_CENTER: LatLngExpression = [-38.5, -63.5];
+const ARG_ZOOM = 4;
 
 function CircuitosOverlayListener({ onEnable }: { onEnable: () => void }) {
   useMapEvents({
@@ -35,21 +38,40 @@ function CircuitosOverlayListener({ onEnable }: { onEnable: () => void }) {
   return null;
 }
 
+function MapModeCamera({ mapMode }: { mapMode: MapModo }) {
+  const map = useMap();
+  const prevMode = useRef(mapMode);
+
+  useEffect(() => {
+    if (prevMode.current === mapMode) return;
+    prevMode.current = mapMode;
+    const center = mapMode === 'nacional' ? ARG_CENTER : PBA_CENTER;
+    const zoom = mapMode === 'nacional' ? ARG_ZOOM : PBA_ZOOM;
+    map.flyTo(center, zoom, { duration: 0.6 });
+  }, [mapMode, map]);
+
+  return null;
+}
+
 function FocusSelectedMunicipio({
   selectedMunicipio,
   municipiosGeoJSON,
+  mapMode,
 }: {
   selectedMunicipio: DistritoFeature | null;
   municipiosGeoJSON: FeatureCollection | null;
+  mapMode: MapModo;
 }) {
   const map = useMap();
   const hadSelection = useRef(false);
   const selectedId = selectedMunicipio?.id ?? null;
+  const defaultCenter = mapMode === 'nacional' ? ARG_CENTER : PBA_CENTER;
+  const defaultZoom = mapMode === 'nacional' ? ARG_ZOOM : PBA_ZOOM;
 
   useEffect(() => {
     if (selectedId == null) {
       if (hadSelection.current) {
-        map.flyTo(PBA_CENTER, PBA_ZOOM, { duration: 0.55 });
+        map.flyTo(defaultCenter, defaultZoom, { duration: 0.55 });
         hadSelection.current = false;
       }
       return;
@@ -64,10 +86,10 @@ function FocusSelectedMunicipio({
     if (!bounds.isValid()) return;
     map.flyToBounds(bounds, {
       padding: [120, 120],
-      maxZoom: 8,
+      maxZoom: mapMode === 'nacional' ? 6 : 8,
       duration: 0.55,
     });
-  }, [selectedId, map, municipiosGeoJSON, selectedMunicipio]);
+  }, [selectedId, map, municipiosGeoJSON, selectedMunicipio, defaultCenter, defaultZoom, mapMode]);
 
   return null;
 }
@@ -86,6 +108,7 @@ export default function MapViewClient({
   hotspotMetrics = [],
   hotspotDataByMetric = {},
   onHotspotSelect,
+  mapMode = 'pba',
 }: MapViewClientProps) {
   const {
     municipiosGeoJSON,
@@ -106,6 +129,7 @@ export default function MapViewClient({
     selectedCircuito,
     highlightParty,
     secondaryByGeo,
+    mapMode,
   );
 
   const handleEnableCircuitos = useCallback(() => {
@@ -127,8 +151,9 @@ export default function MapViewClient({
     });
   }, [getStyleMunicipio, selectedMunicipio]);
 
-  const position: LatLngExpression = PBA_CENTER;
-  const zoom = PBA_ZOOM;
+  const position: LatLngExpression = mapMode === 'nacional' ? ARG_CENTER : PBA_CENTER;
+  const zoom = mapMode === 'nacional' ? ARG_ZOOM : PBA_ZOOM;
+  const baseLayerName = mapMode === 'nacional' ? 'Provincias' : 'Municipios';
 
   const showLoading = isDataLoading || isGeoJsonLoading;
 
@@ -152,18 +177,20 @@ export default function MapViewClient({
         attributionControl={false}
       >
         <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
-        <CircuitosOverlayListener onEnable={handleEnableCircuitos} />
+        <MapModeCamera mapMode={mapMode} />
+        {mapMode === 'pba' && <CircuitosOverlayListener onEnable={handleEnableCircuitos} />}
         <FocusSelectedMunicipio
           selectedMunicipio={selectedMunicipio}
           municipiosGeoJSON={municipiosGeoJSON}
+          mapMode={mapMode}
         />
         
-        <LayersControl position="topright">
-          <LayersControl.BaseLayer checked name="Municipios">
+        <LayersControl position="topright" key={mapMode}>
+          <LayersControl.BaseLayer checked name={baseLayerName}>
             {municipiosGeoJSON && (
               <GeoJSON
                 ref={municipiosRef}
-                key={selectedMetric ? `metric-${selectedMetric}-${highlightParty ?? 'ganador'}` : 'no-metric'}
+                key={`${mapMode}-${selectedMetric ? `metric-${selectedMetric}-${highlightParty ?? 'ganador'}` : 'no-metric'}`}
                 data={municipiosGeoJSON}
                 style={getStyleMunicipio}
                 onEachFeature={onEachFeatureMunicipio}
@@ -171,18 +198,20 @@ export default function MapViewClient({
             )}
           </LayersControl.BaseLayer>
 
-          <LayersControl.Overlay name="Circuitos Electorales">
-            <LayerGroup>
-              {circuitosGeoJSON && (
-                <GeoJSON
-                  data={circuitosGeoJSON}
-                  style={styleCircuito}
-                  onEachFeature={onEachFeatureCircuito}
-                  bubblingMouseEvents={false}
-                />
-              )}
-            </LayerGroup>
-          </LayersControl.Overlay>
+          {mapMode === 'pba' && (
+            <LayersControl.Overlay name="Circuitos Electorales">
+              <LayerGroup>
+                {circuitosGeoJSON && (
+                  <GeoJSON
+                    data={circuitosGeoJSON}
+                    style={styleCircuito}
+                    onEachFeature={onEachFeatureCircuito}
+                    bubblingMouseEvents={false}
+                  />
+                )}
+              </LayerGroup>
+            </LayersControl.Overlay>
+          )}
         </LayersControl>
 
         {hotspotMetrics.length > 0 && (
@@ -214,4 +243,3 @@ export default function MapViewClient({
     </div>
   );
 }
-

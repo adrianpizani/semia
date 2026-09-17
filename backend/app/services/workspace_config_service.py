@@ -26,6 +26,7 @@ LIVE_PATHS: frozenset[str] = frozenset(
         "feeds.web.retention_days",
         "feeds.web.classify_territorial",
         "feeds.web.import_untagged",
+        "defaults.mapa.modo",
     }
 )
 
@@ -33,6 +34,7 @@ DEFAULT_WORKSPACE_CONFIG: dict[str, Any] = {
     "version": 1,
     "defaults": {
         "mapa": {
+            "modo": "pba",  # "pba" | "nacional"
             "primary_metric_clave": None,
             "secondary_metric_claves": [],
             "partido": None,

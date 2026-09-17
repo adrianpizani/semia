@@ -39,6 +39,16 @@ async def get_municipios_geojson(
     """
     return await geografia_service.get_municipios_geojson(db=db)
 
+
+@router.get("/geografia/provincias/geojson", response_model=dict)
+async def get_provincias_geojson(
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    """Retorna todas las Provincias como un GeoJSON FeatureCollection."""
+    return await geografia_service.get_provincias_geojson(db=db)
+
+
 @router.get("/geografia/circuitos/geojson", response_model=dict)
 async def get_circuitos_geojson(
     db: AsyncSession = Depends(get_db),

@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
+import { MapModeSwitcher } from "@/components/map-mode-switcher"
 import {
   createFeedWebSource,
   deleteFeedWebSource,
@@ -27,7 +28,7 @@ import {
 } from "@/lib/api"
 
 const TABS = [
-  { id: "mapa", label: "Mapa", status: "preview" as const },
+  { id: "mapa", label: "Mapa", status: "live" as const },
   { id: "analisis", label: "Análisis", status: "preview" as const },
   { id: "feeds", label: "Feeds", status: "live" as const },
   { id: "social", label: "Social", status: "preview" as const },
@@ -136,6 +137,7 @@ export function ConfiguracionCliente() {
     trimestre_referencia: null,
   })
   const [mapStyle, setMapStyle] = useState("osm")
+  const [mapModo, setMapModo] = useState<"pba" | "nacional">("pba")
   const [intensityMode, setIntensityMode] = useState("relative")
   const [showPanel, setShowPanel] = useState(true)
   const [showLegend, setShowLegend] = useState(true)
@@ -176,6 +178,7 @@ export function ConfiguracionCliente() {
       const ia = (feeds.ia as Record<string, unknown> | undefined) ?? {}
       const archivos = (doc.archivos as Record<string, unknown> | undefined) ?? {}
       if (typeof mapa.map_style === "string") setMapStyle(mapa.map_style)
+      if (mapa.modo === "pba" || mapa.modo === "nacional") setMapModo(mapa.modo)
       if (typeof mapa.intensity_mode === "string") setIntensityMode(mapa.intensity_mode)
       if (typeof mapa.show_panel === "boolean") setShowPanel(mapa.show_panel)
       if (typeof mapa.show_legend === "boolean") setShowLegend(mapa.show_legend)
@@ -207,6 +210,11 @@ export function ConfiguracionCliente() {
     setSaving(true)
     try {
       await patchWorkspaceConfig({
+        defaults: {
+          mapa: {
+            modo: mapModo,
+          },
+        },
         feeds: {
           socio: {
             borrar_trimestre_anterior_al_publicar: socio.borrar_trimestre_anterior_al_publicar,
@@ -344,13 +352,20 @@ export function ConfiguracionCliente() {
                   <CardHeader>
                     <div className="flex flex-wrap items-center gap-2">
                       <CardTitle>Mapa</CardTitle>
-                      <StatusBadge status="preview" />
+                      <StatusBadge status="live" />
                     </div>
                     <CardDescription>
                       Defaults al abrir el dashboard. Destino: <code className="text-xs">defaults.mapa</code>.
+                      El modo de alcance ya afecta la capa del mapa.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
+                    <Field
+                      label="Alcance del mapa"
+                      hint="Define la capa base del dashboard y qué métricas aparecen en los filtros."
+                    >
+                      <MapModeSwitcher value={mapModo} onChange={setMapModo} />
+                    </Field>
                     <Field label="Estilo de mapa base">
                       <Select value={mapStyle} onValueChange={setMapStyle}>
                         <SelectTrigger className="bg-white">

@@ -33,6 +33,8 @@ export interface Metrica {
   escala_rango?: 'log' | 'linear' | null;
   mostrar_cruce?: boolean;
   mostrar_hotspots?: boolean;
+  /** Nivel dominante de hechos: Partido | Provincia | Circuito | … */
+  nivel_geografico?: string | null;
   archivo?: {
     id: number;
     nombre_visible: string;

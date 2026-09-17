@@ -43,7 +43,7 @@ function isNumericColumn(header: string, sample: Record<string, string>[]): bool
     return values.every(v => !isNaN(Number(String(v).replace(",", "."))) && !/^\s*$/.test(String(v)));
 }
 
-const NIVELES_GEOGRAFICOS = ["Circuito", "Seccion", "Partido", "Municipio"] // Opciones de niveles
+const NIVELES_GEOGRAFICOS = ["Provincia", "Partido", "Circuito"] as const
 
 export const CreateProcessorModal: React.FC<CreateProcessorModalProps> = ({
     isOpen,
@@ -101,22 +101,30 @@ export const CreateProcessorModal: React.FC<CreateProcessorModalProps> = ({
         setValueColumn("")
         setMetricNameInput("")
 
-        // Intentar preseleccionar una columna geográfica y su nivel
-        const defaultGeoColumn = fileHeaders.find(header =>
-            header.toLowerCase().includes("circuito") ||
-            header.toLowerCase().includes("seccion") ||
-            header.toLowerCase().includes("partido") ||
-            header.toLowerCase().includes("municipio") ||
-            header.toLowerCase().includes("geografia") ||
-            header.toLowerCase().includes("distrito")
-        )
+        // Preferir columnas que mapean 1:1 a niveles de dimension_geografica.
+        const preferOrder = [
+            { needle: "distrito_nombre", nivel: "Provincia" },
+            { needle: "provincia", nivel: "Provincia" },
+            { needle: "partido", nivel: "Partido" },
+            { needle: "municipio", nivel: "Partido" },
+            { needle: "circuito", nivel: "Circuito" },
+            { needle: "seccion_nombre", nivel: "Partido" },
+            { needle: "geografia", nivel: "" },
+        ] as const
+
+        let defaultGeoColumn: string | undefined
+        let defaultNivel = ""
+        for (const { needle, nivel } of preferOrder) {
+            const hit = fileHeaders.find(h => h.toLowerCase().includes(needle))
+            if (hit) {
+                defaultGeoColumn = hit
+                defaultNivel = nivel
+                break
+            }
+        }
         if (defaultGeoColumn) {
             setGeographyIdentifierColumn(defaultGeoColumn)
-            const lowerCaseHeader = defaultGeoColumn.toLowerCase()
-            if (lowerCaseHeader.includes("circuito")) setNivelGeografico("Circuito")
-            else if (lowerCaseHeader.includes("seccion")) setNivelGeografico("Seccion")
-            else if (lowerCaseHeader.includes("partido")) setNivelGeografico("Partido")
-            else if (lowerCaseHeader.includes("municipio")) setNivelGeografico("Municipio")
+            if (defaultNivel) setNivelGeografico(defaultNivel)
         }
 
         // Intentar preseleccionar la columna de valor
@@ -254,7 +262,9 @@ export const CreateProcessorModal: React.FC<CreateProcessorModalProps> = ({
                         </div>
                     </div>
                      <p className="text-sm text-muted-foreground">
-                        Elija la columna que contiene el ID geográfico y su nivel.
+                        Elija la columna con el nombre geográfico y el nivel en{" "}
+                        <code className="text-xs">dimension_geografica</code> (Provincia / Partido / Circuito).
+                        Para el CSV nacional agregado usá <strong>distrito_nombre</strong> + <strong>Provincia</strong>.
                     </p>
 
                     {/* Selector de Columna de Valor/Métrica y Nombre de la Métrica */}

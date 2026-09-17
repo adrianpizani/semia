@@ -43,7 +43,7 @@ export default function DashboardPage() {
   useEffect(() => {
     setSelectedMunicipio(null)
     setSelectedCircuito(null)
-  }, [view.selectedPrimaryMetric, view.electoralQueryKey])
+  }, [view.selectedPrimaryMetric, view.electoralQueryKey, view.mapMode])
 
   const handleMunicipioClick = useCallback((municipio: any) => {
     if (selectedMunicipio && selectedMunicipio.id === municipio.id) {
@@ -155,6 +155,7 @@ export default function DashboardPage() {
             hotspotMetrics={view.hotspotSecondaries}
             hotspotDataByMetric={view.secondaryMetricsData}
             onHotspotSelect={handleCrucePointClick}
+            mapMode={view.mapMode}
           />
         </div>
         <div className="flex-[2] space-y-4 overflow-y-auto">
