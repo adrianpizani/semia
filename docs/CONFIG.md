@@ -41,6 +41,7 @@ storage
 **Live hoy:**
 - `feeds.socio.borrar_trimestre_anterior_al_publicar`, `feeds.socio.trimestre_referencia`
 - `feeds.web.fetch_interval_min`, `feeds.web.retention_days`, `feeds.web.classify_territorial`, `feeds.web.import_untagged`
+- `defaults.mapa.modo` (`pba` | `nacional`): capa de partidos PBA vs provincias
 - Fuentes RSS: tabla `feed_sources` (CRUD `/api/v1/feeds/web/sources`, UI Configuración → Web)
 
 Compat: `GET/PATCH /feeds/socio/config` sigue existiendo como fachada sobre `feeds.socio`.

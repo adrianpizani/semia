@@ -47,8 +47,9 @@ COPY app/ ./
 COPY alembic.ini ./alembic.ini
 COPY migrations ./migrations
 
-# GeoJSON de seed (partidos + circuitos) + CSV de referencia EPH.
-# Los scripts import_geojson / import_circuitos leen /app/static/*.geojson.
+# GeoJSON de seed (provincias + partidos + circuitos) + CSV de referencia EPH.
+# El entrypoint corre import_geojson (provincias+partidos) al arrancar.
+# import_circuitos sigue siendo opcional / una vez (archivo grande).
 # seed_eph_reference lee /app/static/reference/*.csv. En prod no hay bind-mount.
 COPY static ./static
 

@@ -79,6 +79,8 @@ class Metrica(BaseModel):
     mostrar_cruce: bool = True
     mostrar_hotspots: bool = False
     archivo: ArchivoForMetrica | None
+    # Nivel dominante de sus hechos (Partido | Provincia | Circuito | …)
+    nivel_geografico: str | None = None
     # Feed EPH trimestral (calculado al listar; null en métricas no-EPH)
     periodo_publicado: str | None = None
     trimestre_referencia: str | None = None

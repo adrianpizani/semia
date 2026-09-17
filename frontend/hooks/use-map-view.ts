@@ -2,11 +2,13 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { Layer, PathOptions } from 'leaflet';
-import { loadCircuitosGeoJSONCached, loadMunicipiosGeoJSONCached } from '@/lib/geojson-cache';
+import { loadCircuitosGeoJSONCached, loadMunicipiosGeoJSONCached, loadProvinciasGeoJSONCached } from '@/lib/geojson-cache';
 import { DomEvent } from 'leaflet';
 import { DistritoFeature, DistritoProperties, ElectoralData, MunicipioTooltipSecondaries } from '@/lib/types'; // Importar tipos comunes
 import { getIntensityOpacity, getPartyColor, getPartyVoteShare, getShareDomain, IntensityDomain } from '@/lib/party-color';
 import { formatCompact } from '@/lib/range-utils';
+
+export type MapModo = 'pba' | 'nacional';
 
 // Normaliza un nombre geográfico para hacer match robusto
 // (sin acentos, minúsculas, sin espacios sobrantes).
@@ -57,6 +59,7 @@ export const useMapView = (
   selectedCircuito: DistritoFeature | null,
   highlightParty: string | null = null,
   secondaryByGeo: MunicipioTooltipSecondaries = {},
+  mapMode: MapModo = 'pba',
 ) => {
   const [municipiosGeoJSON, setMunicipiosGeoJSON] = useState<FeatureCollection | null>(null);
   const [circuitosGeoJSON, setCircuitosGeoJSON] = useState<FeatureCollection | null>(null);
@@ -86,29 +89,40 @@ export const useMapView = (
   }, [electoralData, highlightParty]);
 
   useEffect(() => {
+    let cancelled = false;
     const loadMapData = async () => {
       try {
         setIsLoading(true);
-        const municipiosData = await loadMunicipiosGeoJSONCached();
-        setMunicipiosGeoJSON(municipiosData);
+        setMunicipiosGeoJSON(null);
+        if (mapMode === 'nacional') {
+          setCircuitosGeoJSON(null);
+          const provinciasData = await loadProvinciasGeoJSONCached();
+          if (!cancelled) setMunicipiosGeoJSON(provinciasData);
+        } else {
+          const municipiosData = await loadMunicipiosGeoJSONCached();
+          if (!cancelled) setMunicipiosGeoJSON(municipiosData);
+        }
       } catch (error) {
         console.error("Error cargando datos geoespaciales:", error);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
-    loadMapData();
-  }, []);
+    void loadMapData();
+    return () => {
+      cancelled = true;
+    };
+  }, [mapMode]);
 
   const loadCircuitos = useCallback(async () => {
-    if (circuitosGeoJSON) return;
+    if (mapMode === 'nacional' || circuitosGeoJSON) return;
     try {
       const circuitosData = await loadCircuitosGeoJSONCached();
       setCircuitosGeoJSON(circuitosData);
     } catch (error) {
       console.error("Error cargando circuitos electorales:", error);
     }
-  }, [circuitosGeoJSON]);
+  }, [circuitosGeoJSON, mapMode]);
 
   const getStyleMunicipio = useCallback((feature?: DistritoFeature): PathOptions => {
     const baseStyle: PathOptions = {

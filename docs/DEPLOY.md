@@ -113,15 +113,22 @@ GeoJSON y Alembic van **dentro de la imagen**. No hace falta montar `frontend/pu
 
 ## 4. Seed
 
-Una vez, sobre DB vacía:
+**Automático al arrancar el backend** (entrypoint):
+- `alembic upgrade head`
+- `import_geojson` → `provincias.geojson` + `partidos.geojson` (idempotente)
+- seed EPH reference (si vacío)
+
+**Una vez**, a mano (circuitos son pesados; admin no va en entrypoint):
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -e PYTHONPATH=/ backend python -m app.scripts.import_geojson
-docker compose -f docker-compose.prod.yml exec -e PYTHONPATH=/ backend python -m app.scripts.import_circuitos
-docker compose -f docker-compose.prod.yml exec -e PYTHONPATH=/ backend python -m app.scripts.create_admin
+docker compose -f docker-compose.prod.yml exec -e PYTHONPATH=/ backend \
+  python -m app.scripts.import_circuitos
+docker compose -f docker-compose.prod.yml exec -e PYTHONPATH=/ backend \
+  python -m app.scripts.create_admin
 ```
 
-`PYTHONPATH=/` hace que `/app` sea el paquete `app` (los scripts viven en `/app/scripts/`).
+`PYTHONPATH=/` hace que `/app` sea el paquete `app` cuando usás `-m app.scripts.*`.
+El seed de geografía base (provincias + partidos) ya no hace falta correrlo a mano.
 
 ---
 

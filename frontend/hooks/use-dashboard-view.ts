@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback, useMemo, SetStateAction } from "react"
 import { usePathname } from "next/navigation"
-import { getMetricas, getElectoralData, getGenericMetricData, getMetricOpciones } from "@/lib/api"
+import { getMetricas, getElectoralData, getGenericMetricData, getMetricOpciones, getWorkspaceConfig } from "@/lib/api"
 import { decideScale } from "@/lib/range-utils"
 import { Metrica, TipoMetricaEnum, GenericData, AnyFiltro, FiltroCategorico, ElectoralData } from "@/lib/types"
 import { loadDashboardView, saveDashboardView } from "@/lib/dashboard-view"
+import type { MapModo } from "@/hooks/use-map-view"
+import { nivelForMapMode } from "@/components/map-mode-switcher"
 
 function partiesFromElectoralData(data: ElectoralData[] | null): string[] {
   if (!data?.length) return []
@@ -33,6 +35,8 @@ export function useDashboardView() {
   const [metricRanges, setMetricRanges] = useState<{ [metricId: number]: { min: number; max: number; scale: "log" | "linear" } }>({})
   const [viewReady, setViewReady] = useState(false)
   const [cruceMetricId, setCruceMetricId] = useState<number | null>(null)
+  const [mapMode, setMapMode] = useState<MapModo>("pba")
+  const [mapModeReady, setMapModeReady] = useState(false)
 
   useEffect(() => {
     const saved = loadDashboardView()
@@ -45,12 +49,42 @@ export function useDashboardView() {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+    setMapModeReady(false)
+    const loadMapMode = async () => {
+      try {
+        const res = await getWorkspaceConfig()
+        const defaults = (res.document.defaults as Record<string, unknown> | undefined) ?? {}
+        const mapa = (defaults.mapa as Record<string, unknown> | undefined) ?? {}
+        const modo = mapa.modo
+        if (!cancelled && (modo === "pba" || modo === "nacional")) {
+          setMapMode(modo)
+        }
+      } catch (error) {
+        console.error("Error loading map mode:", error)
+      } finally {
+        if (!cancelled) setMapModeReady(true)
+      }
+    }
+    void loadMapMode()
+    return () => {
+      cancelled = true
+    }
+  }, [pathname])
+
+  useEffect(() => {
     if (!viewReady) return
     saveDashboardView({ selectedPrimaryMetric, selectedSecondaryMetrics, filters })
   }, [viewReady, selectedPrimaryMetric, selectedSecondaryMetrics, filters])
 
   useEffect(() => {
-    if (!viewReady || activeMetrics.length === 0) return
+    if (!viewReady) return
+    if (activeMetrics.length === 0) {
+      if (selectedPrimaryMetric !== null) setSelectedPrimaryMetric(null)
+      setSelectedSecondaryMetrics(prev => (prev.length ? [] : prev))
+      setFilters(prev => (prev.length ? [] : prev))
+      return
+    }
     if (selectedPrimaryMetric !== null) {
       const primary = activeMetrics.find(m => m.id === selectedPrimaryMetric)
       if (!primary || primary.tipo !== TipoMetricaEnum.ELECTORAL) {
@@ -62,19 +96,27 @@ export function useDashboardView() {
       const next = prev.filter(id => ids.has(id))
       return next.length === prev.length ? prev : next
     })
+    setFilters(prev => {
+      const next = prev.filter(f => ids.has(f.metrica_id))
+      return next.length === prev.length ? prev : next
+    })
   }, [viewReady, activeMetrics, selectedPrimaryMetric])
 
   useEffect(() => {
+    if (!mapModeReady) return
     const fetchMetrics = async () => {
       try {
         const allMetrics = await getMetricas()
-        setActiveMetrics(allMetrics.filter(m => m.is_active))
+        const nivel = nivelForMapMode(mapMode)
+        setActiveMetrics(
+          allMetrics.filter(m => m.is_active && m.nivel_geografico === nivel)
+        )
       } catch (error) {
         console.error("Error fetching active metrics:", error)
       }
     }
     fetchMetrics()
-  }, [pathname])
+  }, [pathname, mapMode, mapModeReady])
 
   useEffect(() => {
     let cancelled = false
@@ -308,6 +350,7 @@ export function useDashboardView() {
     showCruce,
     cruceRangeFilterActive,
     electoralQueryKey,
+    mapMode,
   }
 }
 

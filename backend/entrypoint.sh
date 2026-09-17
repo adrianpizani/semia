@@ -6,6 +6,11 @@
 set -e
 echo "[entrypoint] alembic upgrade head"
 alembic upgrade head
+# Geografía seed (provincias + partidos PBA). Idempotente; en reinicios
+# con seed completo es no-op. Necesario en prod para capa Nacional.
+echo "[entrypoint] seed geografía (provincias + partidos, si faltan)"
+python -c "import asyncio; from scripts.import_geojson import import_geojson_data; asyncio.run(import_geojson_data(verbose=False))" || \
+  echo "[entrypoint] WARN: seed geojson no corrió (¿GeoJSON ausente en /app/static?)."
 # Catálogo EPH (aglomerados + pesos) si la tabla está vacía — necesario en prod
 # donde no se corre el seed a mano.
 echo "[entrypoint] seed EPH reference (si vacío)"

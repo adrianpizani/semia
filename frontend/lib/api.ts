@@ -71,6 +71,19 @@ export const getMunicipiosGeoJSON = async () => {
   }
 };
 
+export const getProvinciasGeoJSON = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/geografia/provincias/geojson`);
+    if (!response.ok) {
+      throw new Error('Network response was not ok for Provincias GeoJSON');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching Provincias GeoJSON:', error);
+    throw error;
+  }
+};
+
 export const getCircuitosGeoJSON = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/geografia/circuitos/geojson`);
