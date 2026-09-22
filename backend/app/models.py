@@ -207,6 +207,8 @@ class FeedSource(Base):
     activa = Column(Boolean, default=True, nullable=False, index=True)
     # Si está set, todo ítem de esta fuente recibe este tag tipo=municipio
     municipio_default = Column(String, nullable=True, index=True)
+    # Idem para capa nacional (tag tipo=provincia)
+    provincia_default = Column(String, nullable=True, index=True)
     ultimo_fetch_at = Column(DateTime(timezone=True), nullable=True)
     ultimo_error = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

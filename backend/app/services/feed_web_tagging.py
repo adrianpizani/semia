@@ -9,6 +9,46 @@ import re
 import unicodedata
 
 # (texto canónico, alias a buscar, tipo)
+# Provincias: nombres = dimension_geografica.nivel Provincia / provincias.geojson
+SEED_PROVINCIA_ENTRIES: list[tuple[str, str, str]] = [
+    ("Buenos Aires", "buenos aires", "provincia"),
+    ("Buenos Aires", "provincia de buenos aires", "provincia"),
+    ("Ciudad Autónoma de Buenos Aires", "ciudad autonoma de buenos aires", "provincia"),
+    ("Ciudad Autónoma de Buenos Aires", "caba", "provincia"),
+    ("Ciudad Autónoma de Buenos Aires", "capital federal", "provincia"),
+    ("Catamarca", "catamarca", "provincia"),
+    ("Chaco", "chaco", "provincia"),
+    ("Chubut", "chubut", "provincia"),
+    ("Córdoba", "cordoba", "provincia"),
+    ("Corrientes", "corrientes", "provincia"),
+    ("Entre Ríos", "entre rios", "provincia"),
+    ("Formosa", "formosa", "provincia"),
+    ("Jujuy", "jujuy", "provincia"),
+    ("La Pampa", "la pampa", "provincia"),
+    ("La Rioja", "la rioja", "provincia"),
+    ("Mendoza", "mendoza", "provincia"),
+    ("Misiones", "misiones", "provincia"),
+    ("Neuquén", "neuquen", "provincia"),
+    ("Río Negro", "rio negro", "provincia"),
+    ("Salta", "salta", "provincia"),
+    ("San Juan", "san juan", "provincia"),
+    ("San Luis", "san luis", "provincia"),
+    ("Santa Cruz", "santa cruz", "provincia"),
+    ("Santa Fe", "santa fe", "provincia"),
+    ("Santiago del Estero", "santiago del estero", "provincia"),
+    (
+        "Tierra del Fuego, Antártida e Islas del Atlántico Sur",
+        "tierra del fuego",
+        "provincia",
+    ),
+    (
+        "Tierra del Fuego, Antártida e Islas del Atlántico Sur",
+        "tierra del fuego antartida",
+        "provincia",
+    ),
+    ("Tucumán", "tucuman", "provincia"),
+]
+
 SEED_DICT_ENTRIES: list[tuple[str, str, str]] = [
     ("La Libertad Avanza", "la libertad avanza", "partido"),
     ("La Libertad Avanza", "javier milei", "partido"),
@@ -65,6 +105,7 @@ SEED_DICT_ENTRIES: list[tuple[str, str, str]] = [
     ("Campana", "campana", "municipio"),
     ("Zárate", "zarate", "municipio"),
     ("San Nicolás", "san nicolas", "municipio"),
+    *SEED_PROVINCIA_ENTRIES,
 ]
 
 

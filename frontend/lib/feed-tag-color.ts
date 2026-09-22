@@ -108,7 +108,7 @@ export function getFeedTagColor(
   const t = (tipo || "otro").toLowerCase()
   if (t === "tema") return getTemaColor(texto)
   if (t === "partido") return getPartyColor(texto)
-  if (t === "municipio") return getMunicipioColor(texto)
+  if (t === "municipio" || t === "provincia") return getMunicipioColor(texto)
   return getOtroColor(texto)
 }
 

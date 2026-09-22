@@ -1,0 +1,232 @@
+[
+  {
+    "provincia": "Buenos Aires",
+    "nombre": "El Día (La Plata)",
+    "url": "https://www.eldia.com/rss"
+  },
+  {
+    "provincia": "Buenos Aires",
+    "nombre": "La Capital (Mar del Plata)",
+    "url": "https://www.lacapitalmdp.com/feed/"
+  },
+  {
+    "provincia": "Catamarca",
+    "nombre": "El Ancasti",
+    "url": "https://www.elancasti.com.ar/rss"
+  },
+  {
+    "provincia": "Catamarca",
+    "nombre": "El Esquiú",
+    "url": "https://www.elesquiu.com/rss"
+  },
+  {
+    "provincia": "Chaco",
+    "nombre": "Diario Norte",
+    "url": "https://www.diarionorte.com/rss"
+  },
+  {
+    "provincia": "Chaco",
+    "nombre": "La Voz del Chaco",
+    "url": "https://www.diariolavozdelchaco.com/feed/"
+  },
+  {
+    "provincia": "Chubut",
+    "nombre": "Diario Jornada",
+    "url": "https://www.diariojornada.com.ar/rss"
+  },
+  {
+    "provincia": "Chubut",
+    "nombre": "El Chubut",
+    "url": "https://www.elchubut.com.ar/rss"
+  },
+  {
+    "provincia": "Córdoba",
+    "nombre": "La Voz del Interior",
+    "url": "https://www.lavoz.com.ar/arc/outboundfeeds/rss/"
+  },
+  {
+    "provincia": "Córdoba",
+    "nombre": "Cadena 3",
+    "url": "https://www.cadena3.com/rss"
+  },
+  {
+    "provincia": "Corrientes",
+    "nombre": "El Litoral (Corrientes)",
+    "url": "https://www.ellitoral.com.ar/rss"
+  },
+  {
+    "provincia": "Corrientes",
+    "nombre": "Diario Época",
+    "url": "https://www.diarioepoca.com/rss"
+  },
+  {
+    "provincia": "Entre Ríos",
+    "nombre": "Uno Entre Ríos",
+    "url": "https://www.unoentrerios.com.ar/rss"
+  },
+  {
+    "provincia": "Entre Ríos",
+    "nombre": "El Diario (Paraná)",
+    "url": "https://www.eldiario.com.ar/feed/"
+  },
+  {
+    "provincia": "Formosa",
+    "nombre": "Diario La Mañana",
+    "url": "https://www.lamañanaonline.com.ar/rss"
+  },
+  {
+    "provincia": "Formosa",
+    "nombre": "AGENFOR",
+    "url": "https://www.agenfor.com.ar/feed/"
+  },
+  {
+    "provincia": "Jujuy",
+    "nombre": "El Tribuno de Jujuy",
+    "url": "https://www.eltribuno.com/jujuy/rss"
+  },
+  {
+    "provincia": "Jujuy",
+    "nombre": "Jujuy al Día",
+    "url": "https://jujuyaldia.com.ar/feed/"
+  },
+  {
+    "provincia": "La Pampa",
+    "nombre": "La Arena",
+    "url": "https://www.laarena.com.ar/rss"
+  },
+  {
+    "provincia": "La Pampa",
+    "nombre": "El Diario de La Pampa",
+    "url": "https://www.eldiariodelapampa.com.ar/feed/"
+  },
+  {
+    "provincia": "La Rioja",
+    "nombre": "El Independiente",
+    "url": "https://www.elindependiente.com.ar/rss"
+  },
+  {
+    "provincia": "La Rioja",
+    "nombre": "Nueva Rioja",
+    "url": "https://www.nuevarioja.com.ar/rss"
+  },
+  {
+    "provincia": "Mendoza",
+    "nombre": "Diario Los Andes",
+    "url": "https://www.losandes.com.ar/arc/outboundfeeds/rss/"
+  },
+  {
+    "provincia": "Mendoza",
+    "nombre": "MDZ Online",
+    "url": "https://www.mdzol.com/rss"
+  },
+  {
+    "provincia": "Misiones",
+    "nombre": "El Territorio",
+    "url": "https://www.elterritorio.com.ar/rss"
+  },
+  {
+    "provincia": "Misiones",
+    "nombre": "Primera Edición",
+    "url": "https://www.primeraedicion.com.ar/feed/"
+  },
+  {
+    "provincia": "Neuquén",
+    "nombre": "LM Neuquén",
+    "url": "https://www.lmneuquen.com/rss"
+  },
+  {
+    "provincia": "Neuquén",
+    "nombre": "Diario Río Negro",
+    "url": "https://www.rionegro.com.ar/feed/"
+  },
+  {
+    "provincia": "Río Negro",
+    "nombre": "Diario Río Negro",
+    "url": "https://www.rionegro.com.ar/feed/"
+  },
+  {
+    "provincia": "Río Negro",
+    "nombre": "El Cordillerano",
+    "url": "https://www.elcordillerano.com.ar/rss"
+  },
+  {
+    "provincia": "Salta",
+    "nombre": "El Tribuno de Salta",
+    "url": "https://www.eltribuno.com/salta/rss"
+  },
+  {
+    "provincia": "Salta",
+    "nombre": "Nuevo Diario de Salta",
+    "url": "https://www.nuevodiariodesalta.com.ar/rss"
+  },
+  {
+    "provincia": "San Juan",
+    "nombre": "Diario de Cuyo",
+    "url": "https://www.diariodecuyo.com.ar/rss"
+  },
+  {
+    "provincia": "San Juan",
+    "nombre": "Tiempo de San Juan",
+    "url": "https://www.tiempodesanjuan.com/rss"
+  },
+  {
+    "provincia": "San Luis",
+    "nombre": "El Diario de la República",
+    "url": "https://www.eldiariodelarepublica.com/rss"
+  },
+  {
+    "provincia": "San Luis",
+    "nombre": "La Gaceta Digital",
+    "url": "https://lagacetadigital.com.ar/feed/"
+  },
+  {
+    "provincia": "Santa Cruz",
+    "nombre": "La Opinión Austral",
+    "url": "https://laopinonaustral.com.ar/feed/"
+  },
+  {
+    "provincia": "Santa Cruz",
+    "nombre": "Tiempo Sur",
+    "url": "https://www.tiemposur.com.ar/rss"
+  },
+  {
+    "provincia": "Santa Fe",
+    "nombre": "La Capital (Rosario)",
+    "url": "https://www.lacapital.com.ar/rss"
+  },
+  {
+    "provincia": "Santa Fe",
+    "nombre": "El Litoral (Santa Fe)",
+    "url": "https://www.ellitoral.com/rss"
+  },
+  {
+    "provincia": "Santiago del Estero",
+    "nombre": "El Liberal",
+    "url": "https://www.elliberal.com.ar/rss"
+  },
+  {
+    "provincia": "Santiago del Estero",
+    "nombre": "Nuevo Diario Web",
+    "url": "https://www.nuevodiarioweb.com.ar/rss"
+  },
+  {
+    "provincia": "Tierra del Fuego, Antártida e Islas del Atlántico Sur",
+    "nombre": "El Sureño",
+    "url": "https://www.surenio.com.ar/feed/"
+  },
+  {
+    "provincia": "Tierra del Fuego, Antártida e Islas del Atlántico Sur",
+    "nombre": "El Diario del Fin del Mundo",
+    "url": "https://www.eldiariodelfindelmundo.com/rss"
+  },
+  {
+    "provincia": "Tucumán",
+    "nombre": "La Gaceta de Tucumán",
+    "url": "https://www.lagaceta.com.ar/rss"
+  },
+  {
+    "provincia": "Tucumán",
+    "nombre": "El Tucumano",
+    "url": "https://www.eltucumano.com/rss"
+  }
+]
