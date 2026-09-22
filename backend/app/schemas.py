@@ -290,6 +290,7 @@ class FeedSourceOut(BaseModel):
     url: str
     activa: bool
     municipio_default: str | None = None
+    provincia_default: str | None = None
     ultimo_fetch_at: str | None = None
     ultimo_error: str | None = None
 
@@ -301,6 +302,7 @@ class FeedSourceCreate(BaseModel):
     url: str
     activa: bool = True
     municipio_default: str | None = None
+    provincia_default: str | None = None
 
 
 class FeedSourceUpdate(BaseModel):
@@ -308,6 +310,7 @@ class FeedSourceUpdate(BaseModel):
     url: str | None = None
     activa: bool | None = None
     municipio_default: str | None = None
+    provincia_default: str | None = None
 
 
 class FeedWebTagOut(BaseModel):
@@ -402,6 +405,9 @@ class FeedWebAgendaPublishRequest(BaseModel):
     min_score: float = 2.0
     min_municipios: int = 2
     require_variance: bool = True
+    # pba → tags municipio / Partido / prensa_*
+    # nacional → tags provincia / Provincia / prensa_nac_*
+    alcance: str = "pba"
 
 
 class FeedWebAgendaMetricaOut(BaseModel):
@@ -428,6 +434,7 @@ class FeedWebAgendaPublishResult(BaseModel):
     score: str
     min_score: float = 2.0
     min_municipios: int = 2
+    alcance: str = "pba"
     items_used: int
     archivo_id: int | None = None
     metricas: list[FeedWebAgendaMetricaOut] = []
