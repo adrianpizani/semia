@@ -1,0 +1,15 @@
+# Override para VPS Hostinger: Apache ya usa 80/443 (panel.viracomunicacion.com).
+# Semia escucha solo en localhost:8080; Apache hará reverse proxy a semia.studio.
+#
+# Uso:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.hostinger.yml --env-file .env up -d --build
+#
+# En .env: ECR_REGISTRY=semia-local (o cualquier prefijo local; no hace falta AWS).
+
+services:
+  nginx:
+    ports: !override
+      - "127.0.0.1:8080:80"
+    volumes: !override
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d.hostinger:/etc/nginx/conf.d:ro
