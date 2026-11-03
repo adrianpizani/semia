@@ -16,7 +16,6 @@ import {
   deleteFeedWebDictEntry,
   deleteFeedWebItem,
   fetchFeedWebSource,
-  getFeedWebSummary,
   listFeedWebDictionary,
   listFeedWebItems,
   listFeedWebSources,
@@ -30,12 +29,19 @@ import {
   type FeedWebAgendaPublishResult,
   type FeedWebDictEntry,
   type FeedWebItem,
-  type FeedWebSummary,
   type FeedWebTag,
 } from "@/lib/api"
 import { getFeedTagBadgeStyle, getFeedTagColor } from "@/lib/feed-tag-color"
 
-const DICT_TIPOS = ["municipio", "partido", "tema", "otro"] as const
+const DICT_TIPOS = ["municipio", "provincia", "partido", "tema", "otro"] as const
+
+function isPbaSource(s: FeedSource): boolean {
+  return Boolean(s.municipio_default)
+}
+
+function isNacionalSource(s: FeedSource): boolean {
+  return Boolean(s.provincia_default) || !s.municipio_default
+}
 
 function FeedTagChip({
   texto,
@@ -104,18 +110,21 @@ type AgendaRow = {
   total: number
 }
 
-/** Preview client-side: pares municipio×tema a partir de los titulares cargados. */
-function buildAgendaPreview(items: FeedWebItem[]): AgendaRow[] {
-  const byMuni = new Map<string, Map<string, number>>()
+/** Preview client-side: pares geo×tema a partir de los titulares cargados. */
+function buildAgendaPreview(
+  items: FeedWebItem[],
+  geoTipo: "municipio" | "provincia" = "municipio",
+): AgendaRow[] {
+  const byGeo = new Map<string, Map<string, number>>()
   for (const item of items) {
-    const municipios = item.tags.filter((t) => t.tipo === "municipio").map((t) => t.texto)
+    const geos = item.tags.filter((t) => t.tipo === geoTipo).map((t) => t.texto)
     const temas = item.tags.filter((t) => t.tipo === "tema").map((t) => t.texto)
-    if (municipios.length === 0 || temas.length === 0) continue
-    for (const muni of municipios) {
-      let temaMap = byMuni.get(muni)
+    if (geos.length === 0 || temas.length === 0) continue
+    for (const geo of geos) {
+      let temaMap = byGeo.get(geo)
       if (!temaMap) {
         temaMap = new Map()
-        byMuni.set(muni, temaMap)
+        byGeo.set(geo, temaMap)
       }
       for (const tema of temas) {
         temaMap.set(tema, (temaMap.get(tema) || 0) + 1)
@@ -123,7 +132,7 @@ function buildAgendaPreview(items: FeedWebItem[]): AgendaRow[] {
     }
   }
   const rows: AgendaRow[] = []
-  for (const [municipio, temaMap] of byMuni) {
+  for (const [municipio, temaMap] of byGeo) {
     const temas = [...temaMap.entries()]
       .map(([texto, count]) => ({ texto, count }))
       .sort((a, b) => b.count - a.count)
@@ -159,16 +168,31 @@ function LinternaChip({ texto, count, max }: { texto: string; count: number; max
 function ItemTagEditor({
   item,
   busy,
+  allowedTipos,
+  hiddenTipo,
   onChange,
 }: {
   item: FeedWebItem
   busy: boolean
+  allowedTipos: readonly string[]
+  hiddenTipo?: string
   onChange: (next: FeedWebItem) => void
 }) {
   const [draft, setDraft] = useState("")
-  const [draftTipo, setDraftTipo] = useState<string>("tema")
+  const [draftTipo, setDraftTipo] = useState<string>(allowedTipos[0] ?? "tema")
   const [localBusy, setLocalBusy] = useState(false)
   const disabled = busy || localBusy
+
+  const visibleTags = useMemo(
+    () => item.tags.filter((t) => (t.tipo || "otro") !== hiddenTipo),
+    [item.tags, hiddenTipo],
+  )
+
+  useEffect(() => {
+    if (!allowedTipos.includes(draftTipo)) {
+      setDraftTipo(allowedTipos[0] ?? "tema")
+    }
+  }, [allowedTipos, draftTipo])
 
   const persist = async (tags: Array<{ texto: string; tipo?: string | null }>) => {
     setLocalBusy(true)
@@ -213,7 +237,7 @@ function ItemTagEditor({
   return (
     <div className="mt-2 space-y-2">
       <div className="flex flex-wrap gap-1.5">
-        {item.tags.map((t) => (
+        {visibleTags.map((t) => (
           <FeedTagChip
             key={t.id}
             texto={t.texto}
@@ -222,7 +246,7 @@ function ItemTagEditor({
             onRemove={() => removeTag(t.id)}
           />
         ))}
-        {item.tags.length === 0 && (
+        {visibleTags.length === 0 && (
           <span className="text-[11px] text-muted-foreground">Sin tags</span>
         )}
       </div>
@@ -245,7 +269,7 @@ function ItemTagEditor({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {DICT_TIPOS.map((t) => (
+            {allowedTipos.map((t) => (
               <SelectItem key={t} value={t}>
                 {t}
               </SelectItem>
@@ -274,7 +298,6 @@ export default function FeedWebPage() {
   const [items, setItems] = useState<FeedWebItem[]>([])
   const [sources, setSources] = useState<FeedSource[]>([])
   const [tags, setTags] = useState<FeedWebTag[]>([])
-  const [summary, setSummary] = useState<FeedWebSummary | null>(null)
   const [dictEntries, setDictEntries] = useState<FeedWebDictEntry[]>([])
   const [sourceFilter, setSourceFilter] = useState<string>("all")
   const [tagFilter, setTagFilter] = useState<string>("all")
@@ -286,6 +309,8 @@ export default function FeedWebPage() {
   const [metricScore, setMetricScore] = useState("count")
   const [minScore, setMinScore] = useState("2")
   const [minMunicipios, setMinMunicipios] = useState("2")
+  /** Ámbito de trabajo de toda la pantalla (corpus, fetch, publish). */
+  const [ambito, setAmbito] = useState<"pba" | "nacional">("pba")
   const [publishing, setPublishing] = useState(false)
   const [lastPublish, setLastPublish] = useState<FeedWebAgendaPublishResult | null>(null)
 
@@ -294,17 +319,15 @@ export default function FeedWebPage() {
     try {
       const sourceId = sourceFilter === "all" ? undefined : Number(sourceFilter)
       const tag = tagFilter === "all" ? undefined : tagFilter
-      const [itemsRes, sourcesRes, tagsRes, summaryRes, dictRes] = await Promise.all([
+      const [itemsRes, sourcesRes, tagsRes, dictRes] = await Promise.all([
         listFeedWebItems({ source_id: sourceId, tag, limit: 80 }),
         listFeedWebSources(),
         listFeedWebTags(),
-        getFeedWebSummary(),
         listFeedWebDictionary(),
       ])
       setItems(itemsRes)
       setSources(sourcesRes)
       setTags(tagsRes)
-      setSummary(summaryRes)
       setDictEntries(dictRes)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al cargar el feed web")
@@ -317,12 +340,75 @@ export default function FeedWebPage() {
     load()
   }, [load])
 
-  const filteredDict = useMemo(() => {
-    if (dictTipoFilter === "all") return dictEntries
-    return dictEntries.filter((e) => e.tipo === dictTipoFilter)
-  }, [dictEntries, dictTipoFilter])
+  const scopedSources = useMemo(
+    () => sources.filter((s) => (ambito === "pba" ? isPbaSource(s) : isNacionalSource(s))),
+    [sources, ambito],
+  )
 
-  const agendaPreview = useMemo(() => buildAgendaPreview(items), [items])
+  const scopedSourceIds = useMemo(
+    () => new Set(scopedSources.map((s) => s.id)),
+    [scopedSources],
+  )
+
+  const scopedItems = useMemo(
+    () => items.filter((i) => scopedSourceIds.has(i.source_id)),
+    [items, scopedSourceIds],
+  )
+
+  const geoTipoOculto = ambito === "nacional" ? "municipio" : "provincia"
+
+  const scopedDictTipos = useMemo(
+    () => DICT_TIPOS.filter((t) => t !== geoTipoOculto),
+    [geoTipoOculto],
+  )
+
+  const scopedTags = useMemo(
+    () => tags.filter((t) => (t.tipo || "otro") !== geoTipoOculto),
+    [tags, geoTipoOculto],
+  )
+
+  const filteredDict = useMemo(() => {
+    let rows = dictEntries.filter((e) => e.tipo !== geoTipoOculto)
+    if (dictTipoFilter !== "all") {
+      rows = rows.filter((e) => e.tipo === dictTipoFilter)
+    }
+    return rows
+  }, [dictEntries, dictTipoFilter, geoTipoOculto])
+
+  const scopedTopTags = useMemo(() => {
+    const counts = new Map<string, { id: number; texto: string; tipo: string | null; count: number }>()
+    for (const item of scopedItems) {
+      for (const t of item.tags) {
+        if ((t.tipo || "otro") === geoTipoOculto) continue
+        const key = `${t.tipo ?? "otro"}::${t.texto}`
+        const prev = counts.get(key)
+        if (prev) prev.count += 1
+        else counts.set(key, { id: t.id, texto: t.texto, tipo: t.tipo ?? null, count: 1 })
+      }
+    }
+    return Array.from(counts.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 12)
+  }, [scopedItems, geoTipoOculto])
+
+  const scopedSourcesActive = useMemo(
+    () => scopedSources.filter((s) => s.activa).length,
+    [scopedSources],
+  )
+
+  const scopedUltimoFetch = useMemo(() => {
+    let best: string | null = null
+    for (const s of scopedSources) {
+      if (!s.ultimo_fetch_at) continue
+      if (!best || s.ultimo_fetch_at > best) best = s.ultimo_fetch_at
+    }
+    return best
+  }, [scopedSources])
+
+  const agendaPreview = useMemo(
+    () => buildAgendaPreview(scopedItems, ambito === "nacional" ? "provincia" : "municipio"),
+    [scopedItems, ambito],
+  )
   const agendaMaxTema = useMemo(() => {
     let max = 1
     for (const row of agendaPreview) {
@@ -331,15 +417,31 @@ export default function FeedWebPage() {
     return max
   }, [agendaPreview])
 
+  const handleAmbitoChange = (next: "pba" | "nacional") => {
+    setAmbito(next)
+    setSourceFilter("all")
+    setTagFilter("all")
+    setDictTipoFilter("all")
+    const oculto = next === "nacional" ? "municipio" : "provincia"
+    setNewTipo((prev) => (prev === oculto ? "tema" : prev))
+  }
+
   const handleFetch = async () => {
     setFetching(true)
     setFetchProgress(null)
     try {
       const allSources = sources.length ? sources : await listFeedWebSources()
       if (!sources.length) setSources(allSources)
-      const active = allSources.filter((s) => s.activa)
+      const inAmbito = allSources.filter((s) =>
+        ambito === "pba" ? isPbaSource(s) : isNacionalSource(s),
+      )
+      const active = inAmbito.filter((s) => s.activa)
       if (active.length === 0) {
-        toast.error("No hay fuentes activas")
+        toast.error(
+          ambito === "nacional"
+            ? "No hay fuentes nacionales activas"
+            : "No hay fuentes PBA activas",
+        )
         return
       }
 
@@ -384,8 +486,6 @@ export default function FeedWebPage() {
       await deleteFeedWebItem(item.id)
       setItems((prev) => prev.filter((i) => i.id !== item.id))
       toast.success("Titular eliminado")
-      const summaryRes = await getFeedWebSummary().catch(() => null)
-      if (summaryRes) setSummary(summaryRes)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo eliminar")
     } finally {
@@ -427,6 +527,7 @@ export default function FeedWebPage() {
         min_score: Number(minScore) || 2,
         min_municipios: Number(minMunicipios) || 2,
         require_variance: true,
+        alcance: ambito,
       })
       setLastPublish(result)
       if (!result.ok) {
@@ -434,7 +535,7 @@ export default function FeedWebPage() {
         return
       }
       toast.success(
-        `Agenda: ${result.metricas.length} métricas · ${result.hechos} hechos` +
+        `Agenda ${ambito === "nacional" ? "nacional" : "PBA"}: ${result.metricas.length} métricas · ${result.hechos} hechos` +
           (result.metricas_limpiadas ? ` · ${result.metricas_limpiadas} limpiadas` : ""),
       )
     } catch (err) {
@@ -449,16 +550,28 @@ export default function FeedWebPage() {
       live
       wide
       title="Feed web"
-      description="Curación de titulares a la izquierda; corpus al centro; creador de métricas a la derecha."
+      description="Curación por ámbito (PBA o Nacional). Corpus a la izquierda; diccionario al centro; métricas a la derecha."
       actions={
         <>
+          <Select
+            value={ambito}
+            onValueChange={(v) => handleAmbitoChange(v as "pba" | "nacional")}
+          >
+            <SelectTrigger className="w-[160px] bg-white hover:bg-white">
+              <SelectValue placeholder="Ámbito" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pba">Ámbito PBA</SelectItem>
+              <SelectItem value="nacional">Ámbito Nacional</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
             <SelectTrigger className="w-[180px] bg-white hover:bg-white">
               <SelectValue placeholder="Portal" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los portales</SelectItem>
-              {sources.map((s) => (
+              {scopedSources.map((s) => (
                 <SelectItem key={s.id} value={String(s.id)}>
                   {s.nombre}
                 </SelectItem>
@@ -471,7 +584,7 @@ export default function FeedWebPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los tags</SelectItem>
-              {tags.map((t) => (
+              {scopedTags.map((t) => (
                 <SelectItem key={t.id} value={t.texto}>
                   {t.texto}
                   {t.count != null ? ` (${t.count})` : ""}
@@ -503,7 +616,7 @@ export default function FeedWebPage() {
             <CardDescription>
               {loading
                 ? "Cargando…"
-                : `${items.length} mostrados · eliminar o recatalogar`}
+                : `${scopedItems.length} mostrados (${ambito === "nacional" ? "nacional" : "PBA"}) · eliminar o recatalogar`}
             </CardDescription>
           </CardHeader>
           <CardContent className="max-h-[calc(100vh-12rem)] space-y-3 overflow-y-auto">
@@ -513,9 +626,9 @@ export default function FeedWebPage() {
                 Cargando titulares…
               </div>
             )}
-            {!loading && items.length === 0 && (
+            {!loading && scopedItems.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                No hay titulares. Configurá fuentes en{" "}
+                No hay titulares en este ámbito. Configurá fuentes en{" "}
                 <Link href="/configuracion" className="underline underline-offset-2">
                   Configuración → Web
                 </Link>{" "}
@@ -523,7 +636,7 @@ export default function FeedWebPage() {
               </p>
             )}
             {!loading &&
-              items.map((item) => (
+              scopedItems.map((item) => (
                 <article key={item.id} className="rounded-lg border border-border/70 p-3">
                   <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="outline">{item.source_nombre}</Badge>
@@ -550,6 +663,8 @@ export default function FeedWebPage() {
                   <ItemTagEditor
                     item={item}
                     busy={itemBusy}
+                    allowedTipos={scopedDictTipos}
+                    hiddenTipo={geoTipoOculto}
                     onChange={(updated) => {
                       setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)))
                     }}
@@ -564,29 +679,33 @@ export default function FeedWebPage() {
           <Card className="border-border/80 bg-white shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Resumen</CardTitle>
-              <CardDescription>Corpus recolectado.</CardDescription>
+              <CardDescription>
+                Ámbito {ambito === "nacional" ? "nacional" : "PBA"} · corpus en vista.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-md border border-border/60 px-3 py-2">
-                  <p className="text-[11px] text-muted-foreground">Ítems</p>
-                  <p className="text-lg font-semibold tabular-nums">{summary?.items_count ?? "—"}</p>
+                  <p className="text-[11px] text-muted-foreground">Ítems en vista</p>
+                  <p className="text-lg font-semibold tabular-nums">{scopedItems.length}</p>
                 </div>
                 <div className="rounded-md border border-border/60 px-3 py-2">
                   <p className="text-[11px] text-muted-foreground">Fuentes activas</p>
-                  <p className="text-lg font-semibold tabular-nums">{summary?.sources_active ?? "—"}</p>
+                  <p className="text-lg font-semibold tabular-nums">{scopedSourcesActive}</p>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Última actualización: {formatWhen(summary?.ultimo_fetch_at)}
+                Última actualización: {formatWhen(scopedUltimoFetch)}
               </p>
-              {summary && summary.top_tags.length > 0 && (
+              {scopedTopTags.length > 0 && (
                 <div>
-                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">Top tags</p>
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                    Top tags ({ambito === "nacional" ? "sin municipios" : "sin provincias"})
+                  </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {summary.top_tags.map((t) => (
+                    {scopedTopTags.map((t) => (
                       <FeedTagChip
-                        key={t.id}
+                        key={`${t.tipo}-${t.texto}`}
                         texto={t.texto}
                         tipo={t.tipo}
                         count={t.count}
@@ -612,7 +731,7 @@ export default function FeedWebPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
-                    {DICT_TIPOS.map((t) => (
+                    {scopedDictTipos.map((t) => (
                       <SelectItem key={t} value={t}>
                         {t}
                       </SelectItem>
@@ -702,7 +821,7 @@ export default function FeedWebPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {DICT_TIPOS.map((t) => (
+                      {scopedDictTipos.map((t) => (
                         <SelectItem key={t} value={t}>
                           {t}
                         </SelectItem>
@@ -740,7 +859,17 @@ export default function FeedWebPage() {
                 <p className="text-sm font-medium">Qué se está diciendo</p>
               </div>
               <p className="text-xs text-muted-foreground">
-                Solo publica temas con variación real entre municipios. Una sola mención no alcanza.
+                Publicá agenda PBA (municipios) o Nacional (provincias). Las claves no se pisan:
+                <code className="text-[10px]"> prensa_*</code> vs{" "}
+                <code className="text-[10px]">prensa_nac_*</code>.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-[11px] font-medium text-muted-foreground">Alcance</p>
+              <p className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs">
+                {ambito === "nacional" ? "Nacional · provincias" : "PBA · partidos"}
+                <span className="text-muted-foreground"> (filtro de la barra)</span>
               </p>
             </div>
 
@@ -785,7 +914,9 @@ export default function FeedWebPage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <p className="text-[11px] font-medium text-muted-foreground">Mín. municipios</p>
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  {ambito === "nacional" ? "Mín. provincias" : "Mín. municipios"}
+                </p>
                 <Select value={minMunicipios} onValueChange={setMinMunicipios}>
                   <SelectTrigger className="h-8 bg-white text-xs">
                     <SelectValue />
@@ -809,7 +940,9 @@ export default function FeedWebPage() {
               </p>
               {agendaPreview.length === 0 ? (
                 <p className="rounded-md border border-dashed border-border/70 px-3 py-4 text-xs text-muted-foreground">
-                  Sin pares municipio × tema en los titulares cargados. Etiquetá o actualizá el feed.
+                  Sin pares{" "}
+                  {ambito === "nacional" ? "provincia" : "municipio"} × tema en los
+                  titulares cargados. Etiquetá o actualizá el feed.
                 </p>
               ) : (
                 <div className="max-h-[32vh] space-y-2.5 overflow-y-auto pr-1">

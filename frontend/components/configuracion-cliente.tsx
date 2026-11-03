@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { ExternalLink, Loader2, Plus, RotateCcw, Save, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +23,7 @@ import {
   listFeedWebSources,
   patchWorkspaceConfig,
   seedFeedWebLocalSources,
+  seedFeedWebProvincialSources,
   updateFeedWebSource,
   type FeedSource,
 } from "@/lib/api"
@@ -151,6 +152,7 @@ export function ConfiguracionCliente() {
   const [newSourceName, setNewSourceName] = useState("")
   const [newSourceUrl, setNewSourceUrl] = useState("")
   const [newSourceMuni, setNewSourceMuni] = useState("")
+  const [newSourceProv, setNewSourceProv] = useState("")
   const [sourcesBusy, setSourcesBusy] = useState(false)
   const [iaConfidence, setIaConfidence] = useState([75])
   const [iaDailyLimit, setIaDailyLimit] = useState("50")
@@ -240,6 +242,72 @@ export function ConfiguracionCliente() {
     await load()
     toast.info("Valores recargados desde el servidor")
   }
+
+  const pbaSources = useMemo(
+    () => webSources.filter((s) => Boolean(s.municipio_default)),
+    [webSources],
+  )
+  const nacionalSources = useMemo(
+    () => webSources.filter((s) => Boolean(s.provincia_default) || !s.municipio_default),
+    [webSources],
+  )
+
+  const renderSourceRow = (src: FeedSource) => (
+    <div
+      key={src.id}
+      className="flex flex-wrap items-center gap-3 rounded-lg border border-border/70 px-3 py-2"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{src.nombre}</p>
+        <p className="truncate text-[11px] text-muted-foreground">{src.url}</p>
+        {src.municipio_default && (
+          <p className="text-[11px] text-emerald-800">Municipio default: {src.municipio_default}</p>
+        )}
+        {src.provincia_default && (
+          <p className="text-[11px] text-sky-800">Provincia default: {src.provincia_default}</p>
+        )}
+        {src.ultimo_error && (
+          <p className="text-[11px] text-destructive">{src.ultimo_error}</p>
+        )}
+      </div>
+      <Switch
+        checked={src.activa}
+        disabled={sourcesBusy}
+        onCheckedChange={async (activa) => {
+          setSourcesBusy(true)
+          try {
+            await updateFeedWebSource(src.id, { activa })
+            setWebSources((prev) => prev.map((s) => (s.id === src.id ? { ...s, activa } : s)))
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Error")
+          } finally {
+            setSourcesBusy(false)
+          }
+        }}
+      />
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-destructive"
+        disabled={sourcesBusy}
+        onClick={async () => {
+          if (!confirm(`¿Eliminar fuente «${src.nombre}»?`)) return
+          setSourcesBusy(true)
+          try {
+            await deleteFeedWebSource(src.id)
+            setWebSources((prev) => prev.filter((s) => s.id !== src.id))
+            toast.success("Fuente eliminada")
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Error")
+          } finally {
+            setSourcesBusy(false)
+          }
+        }}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  )
 
   return (
     <div className="flex h-screen flex-col">
@@ -515,88 +583,100 @@ export function ConfiguracionCliente() {
                     />
 
                     <div className="space-y-3">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <Label>Fuentes RSS</Label>
-                          <p className="text-xs text-muted-foreground">
-                            Municipio default: tag automático en todos los titulares de esa fuente
-                            (medios locales). Nacionales: vacío.
-                          </p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="bg-white"
-                          disabled={sourcesBusy}
-                          onClick={async () => {
-                            setSourcesBusy(true)
-                            try {
-                              const res = await seedFeedWebLocalSources()
-                              toast.success(
-                                `Locales: +${res.created} nuevas · ${res.updated} actualizadas (${res.total_file} en archivo)`,
-                              )
-                              const sources = await listFeedWebSources()
-                              setWebSources(sources)
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : "Error al importar")
-                            } finally {
-                              setSourcesBusy(false)
-                            }
-                          }}
-                        >
-                          Importar medios locales (RSS OK)
-                        </Button>
+                      <div>
+                        <Label>Fuentes RSS</Label>
+                        <p className="text-xs text-muted-foreground">
+                          PBA: medios con municipio default. Nacional: provinciales (provincia
+                          default) y portales sin municipio (match por texto).
+                        </p>
                       </div>
-                      <div className="space-y-2">
-                        {webSources.length === 0 && (
-                          <p className="text-sm text-muted-foreground">No hay fuentes cargadas.</p>
-                        )}
-                        {webSources.map((src) => (
-                          <div
-                            key={src.id}
-                            className="flex flex-wrap items-center gap-3 rounded-lg border border-border/70 px-3 py-2"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium">{src.nombre}</p>
-                              <p className="truncate text-[11px] text-muted-foreground">{src.url}</p>
-                              {src.municipio_default && (
-                                <p className="text-[11px] text-emerald-800">
-                                  Municipio default: {src.municipio_default}
-                                </p>
-                              )}
-                              {src.ultimo_error && (
-                                <p className="text-[11px] text-destructive">{src.ultimo_error}</p>
-                              )}
-                            </div>
-                            <Switch
-                              checked={src.activa}
+
+                      <Tabs defaultValue="pba" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2 bg-muted/60">
+                          <TabsTrigger value="pba">PBA · municipios ({pbaSources.length})</TabsTrigger>
+                          <TabsTrigger value="nacional">
+                            Nacional · provincias ({nacionalSources.length})
+                          </TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="pba" className="mt-3 space-y-3">
+                          <div className="flex justify-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="bg-white"
                               disabled={sourcesBusy}
-                              onCheckedChange={async (activa) => {
+                              onClick={async () => {
                                 setSourcesBusy(true)
                                 try {
-                                  await updateFeedWebSource(src.id, { activa })
-                                  setWebSources((prev) =>
-                                    prev.map((s) => (s.id === src.id ? { ...s, activa } : s)),
+                                  const res = await seedFeedWebLocalSources()
+                                  toast.success(
+                                    `PBA: +${res.created} nuevas · ${res.updated} actualizadas (${res.total_file} en archivo)`,
                                   )
+                                  setWebSources(await listFeedWebSources())
                                 } catch (err) {
-                                  toast.error(err instanceof Error ? err.message : "Error")
+                                  toast.error(err instanceof Error ? err.message : "Error al importar")
                                 } finally {
                                   setSourcesBusy(false)
                                 }
                               }}
+                            >
+                              Importar medios locales (RSS OK)
+                            </Button>
+                          </div>
+                          <div className="space-y-2">
+                            {pbaSources.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">
+                                No hay fuentes PBA. Importá locales o agregá con municipio.
+                              </p>
+                            ) : (
+                              pbaSources.map(renderSourceRow)
+                            )}
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-[1fr_1.2fr_0.8fr_auto]">
+                            <Input
+                              className="bg-white"
+                              placeholder="Nombre del medio"
+                              value={newSourceName}
+                              onChange={(e) => setNewSourceName(e.target.value)}
+                            />
+                            <Input
+                              className="bg-white"
+                              placeholder="URL del RSS"
+                              value={newSourceUrl}
+                              onChange={(e) => setNewSourceUrl(e.target.value)}
+                            />
+                            <Input
+                              className="bg-white"
+                              placeholder="Municipio"
+                              value={newSourceMuni}
+                              onChange={(e) => setNewSourceMuni(e.target.value)}
                             />
                             <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive"
-                              disabled={sourcesBusy}
+                              variant="outline"
+                              className="bg-white"
+                              disabled={
+                                sourcesBusy || !newSourceName.trim() || !newSourceUrl.trim()
+                              }
                               onClick={async () => {
-                                if (!confirm(`¿Eliminar fuente «${src.nombre}»?`)) return
                                 setSourcesBusy(true)
                                 try {
-                                  await deleteFeedWebSource(src.id)
-                                  setWebSources((prev) => prev.filter((s) => s.id !== src.id))
-                                  toast.success("Fuente eliminada")
+                                  const created = await createFeedWebSource({
+                                    nombre: newSourceName.trim(),
+                                    url: newSourceUrl.trim(),
+                                    activa: true,
+                                    municipio_default: newSourceMuni.trim() || null,
+                                    provincia_default: null,
+                                  })
+                                  setWebSources((prev) =>
+                                    [...prev, created].sort((a, b) =>
+                                      a.nombre.localeCompare(b.nombre),
+                                    ),
+                                  )
+                                  setNewSourceName("")
+                                  setNewSourceUrl("")
+                                  setNewSourceMuni("")
+                                  toast.success("Fuente PBA agregada")
                                 } catch (err) {
                                   toast.error(err instanceof Error ? err.message : "Error")
                                 } finally {
@@ -604,61 +684,104 @@ export function ConfiguracionCliente() {
                                 }
                               }}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Plus className="mr-1 h-4 w-4" />
+                              Agregar
                             </Button>
                           </div>
-                        ))}
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-[1fr_1.2fr_0.8fr_auto]">
-                        <Input
-                          className="bg-white"
-                          placeholder="Nombre del medio"
-                          value={newSourceName}
-                          onChange={(e) => setNewSourceName(e.target.value)}
-                        />
-                        <Input
-                          className="bg-white"
-                          placeholder="URL del RSS"
-                          value={newSourceUrl}
-                          onChange={(e) => setNewSourceUrl(e.target.value)}
-                        />
-                        <Input
-                          className="bg-white"
-                          placeholder="Municipio (opcional)"
-                          value={newSourceMuni}
-                          onChange={(e) => setNewSourceMuni(e.target.value)}
-                        />
-                        <Button
-                          variant="outline"
-                          className="bg-white"
-                          disabled={sourcesBusy || !newSourceName.trim() || !newSourceUrl.trim()}
-                          onClick={async () => {
-                            setSourcesBusy(true)
-                            try {
-                              const created = await createFeedWebSource({
-                                nombre: newSourceName.trim(),
-                                url: newSourceUrl.trim(),
-                                activa: true,
-                                municipio_default: newSourceMuni.trim() || null,
-                              })
-                              setWebSources((prev) =>
-                                [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)),
-                              )
-                              setNewSourceName("")
-                              setNewSourceUrl("")
-                              setNewSourceMuni("")
-                              toast.success("Fuente agregada")
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : "Error")
-                            } finally {
-                              setSourcesBusy(false)
-                            }
-                          }}
-                        >
-                          <Plus className="mr-1 h-4 w-4" />
-                          Agregar
-                        </Button>
-                      </div>
+                        </TabsContent>
+
+                        <TabsContent value="nacional" className="mt-3 space-y-3">
+                          <div className="flex justify-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="bg-white"
+                              disabled={sourcesBusy}
+                              onClick={async () => {
+                                setSourcesBusy(true)
+                                try {
+                                  const res = await seedFeedWebProvincialSources()
+                                  toast.success(
+                                    `Provinciales: +${res.created} nuevas · ${res.updated} actualizadas (${res.total_file} en archivo)`,
+                                  )
+                                  setWebSources(await listFeedWebSources())
+                                } catch (err) {
+                                  toast.error(err instanceof Error ? err.message : "Error al importar")
+                                } finally {
+                                  setSourcesBusy(false)
+                                }
+                              }}
+                            >
+                              Importar medios provinciales (CSV)
+                            </Button>
+                          </div>
+                          <div className="space-y-2">
+                            {nacionalSources.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">
+                                No hay fuentes nacionales. Importá provinciales o agregá con
+                                provincia.
+                              </p>
+                            ) : (
+                              nacionalSources.map(renderSourceRow)
+                            )}
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-[1fr_1.2fr_0.8fr_auto]">
+                            <Input
+                              className="bg-white"
+                              placeholder="Nombre del medio"
+                              value={newSourceName}
+                              onChange={(e) => setNewSourceName(e.target.value)}
+                            />
+                            <Input
+                              className="bg-white"
+                              placeholder="URL del RSS"
+                              value={newSourceUrl}
+                              onChange={(e) => setNewSourceUrl(e.target.value)}
+                            />
+                            <Input
+                              className="bg-white"
+                              placeholder="Provincia (opcional)"
+                              value={newSourceProv}
+                              onChange={(e) => setNewSourceProv(e.target.value)}
+                            />
+                            <Button
+                              variant="outline"
+                              className="bg-white"
+                              disabled={
+                                sourcesBusy || !newSourceName.trim() || !newSourceUrl.trim()
+                              }
+                              onClick={async () => {
+                                setSourcesBusy(true)
+                                try {
+                                  const created = await createFeedWebSource({
+                                    nombre: newSourceName.trim(),
+                                    url: newSourceUrl.trim(),
+                                    activa: true,
+                                    municipio_default: null,
+                                    provincia_default: newSourceProv.trim() || null,
+                                  })
+                                  setWebSources((prev) =>
+                                    [...prev, created].sort((a, b) =>
+                                      a.nombre.localeCompare(b.nombre),
+                                    ),
+                                  )
+                                  setNewSourceName("")
+                                  setNewSourceUrl("")
+                                  setNewSourceProv("")
+                                  toast.success("Fuente nacional agregada")
+                                } catch (err) {
+                                  toast.error(err instanceof Error ? err.message : "Error")
+                                } finally {
+                                  setSourcesBusy(false)
+                                }
+                              }}
+                            >
+                              <Plus className="mr-1 h-4 w-4" />
+                              Agregar
+                            </Button>
+                          </div>
+                        </TabsContent>
+                      </Tabs>
                     </div>
                   </CardContent>
                 </Card>

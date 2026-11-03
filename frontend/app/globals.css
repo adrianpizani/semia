@@ -171,7 +171,37 @@ path.semia-municipio--instant {
   box-shadow: 0 3px 14px rgba(0, 0, 0, 0.1);
 }
 
-/* Hotspots prensa: chip hover (marcadores = CircleMarker en JS) */
+/* Hotspots prensa: pines + chip hover */
+.prensa-hotspot-pin-wrap {
+  background: transparent !important;
+  border: none !important;
+}
+
+.prensa-hotspot-pin {
+  position: relative;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.35));
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.prensa-hotspot-pin.is-selected {
+  filter: drop-shadow(0 3px 6px rgb(0 0 0 / 0.45));
+  transform: translateY(-1px);
+}
+
+.prensa-hotspot-pin__num {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  transform: translate(-50%, -50%);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #1c1408;
+  line-height: 1;
+  pointer-events: none;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
 .leaflet-tooltip.prensa-hotspot-tooltip {
   padding: 0;
   border: none;

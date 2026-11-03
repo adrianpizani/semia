@@ -17,7 +17,7 @@ from services.feed_web_tagging import dictionary_from_rows, extract_tags, normal
 from services import workspace_config_service as wcs
 
 
-VALID_DICT_TIPOS = frozenset({"municipio", "partido", "tema", "otro"})
+VALID_DICT_TIPOS = frozenset({"municipio", "partido", "tema", "otro", "provincia"})
 
 
 def _parse_published(entry: dict) -> datetime | None:
@@ -58,13 +58,16 @@ async def create_source(
     url: str,
     activa: bool = True,
     municipio_default: str | None = None,
+    provincia_default: str | None = None,
 ) -> models.FeedSource:
     muni = (municipio_default or "").strip() or None
+    prov = (provincia_default or "").strip() or None
     source = models.FeedSource(
         nombre=nombre.strip(),
         url=url.strip(),
         activa=activa,
         municipio_default=muni,
+        provincia_default=prov,
     )
     db.add(source)
     await db.commit()
@@ -81,6 +84,8 @@ async def update_source(
     activa: bool | None = None,
     municipio_default: str | None = None,
     clear_municipio_default: bool = False,
+    provincia_default: str | None = None,
+    clear_provincia_default: bool = False,
 ) -> models.FeedSource | None:
     source = await db.get(models.FeedSource, source_id)
     if not source:
@@ -95,6 +100,10 @@ async def update_source(
         source.municipio_default = None
     elif municipio_default is not None:
         source.municipio_default = municipio_default.strip() or None
+    if clear_provincia_default:
+        source.provincia_default = None
+    elif provincia_default is not None:
+        source.provincia_default = provincia_default.strip() or None
     await db.commit()
     await db.refresh(source)
     return source
@@ -150,6 +159,68 @@ async def seed_local_sources(db: AsyncSession) -> dict[str, Any]:
                     url=url[:1000],
                     activa=True,
                     municipio_default=municipio,
+                )
+            )
+            created += 1
+    await db.commit()
+    return {
+        "ok": True,
+        "created": created,
+        "updated": updated,
+        "total_file": len(rows),
+        "path": str(path),
+    }
+
+
+async def seed_provincial_sources(db: AsyncSession) -> dict[str, Any]:
+    """Upsert medios provinciales (2× provincia) con provincia_default."""
+    import json
+    from pathlib import Path
+
+    candidates = [
+        Path(__file__).resolve().parents[2]
+        / "static"
+        / "reference"
+        / "feed_web_provincial_sources.json",
+        Path("/app/static/reference/feed_web_provincial_sources.json"),
+    ]
+    path = next((p for p in candidates if p.is_file()), None)
+    if not path:
+        return {
+            "ok": False,
+            "error": "No se encontró feed_web_provincial_sources.json",
+            "created": 0,
+            "updated": 0,
+        }
+
+    rows = json.loads(path.read_text(encoding="utf-8"))
+    created = 0
+    updated = 0
+    for row in rows:
+        url = (row.get("url") or "").strip()
+        nombre = (row.get("nombre") or "").strip()
+        provincia = (row.get("provincia") or "").strip() or None
+        if not url or not nombre:
+            continue
+        existing = await db.execute(select(models.FeedSource).where(models.FeedSource.url == url))
+        src = existing.scalar_one_or_none()
+        if src:
+            changed = False
+            if provincia and src.provincia_default != provincia:
+                src.provincia_default = provincia
+                changed = True
+            if nombre and src.nombre != nombre:
+                src.nombre = nombre
+                changed = True
+            if changed:
+                updated += 1
+        else:
+            db.add(
+                models.FeedSource(
+                    nombre=nombre[:200],
+                    url=url[:1000],
+                    activa=True,
+                    provincia_default=provincia,
                 )
             )
             created += 1
@@ -343,13 +414,21 @@ async def fetch_source(
                 haystack = f"{title} {summary or ''}"
                 matched_tags = extract_tags(haystack, dictionary)
 
-            # Medios locales: forzar tag de municipio de la fuente
+            # Medios locales PBA: forzar tag municipio
             if source.municipio_default:
                 muni = source.municipio_default.strip()
                 if muni:
                     already = {normalize_text(t) for t, _ in matched_tags}
                     if normalize_text(muni) not in already:
                         matched_tags.append((muni, "municipio"))
+
+            # Medios provinciales: forzar tag provincia
+            if source.provincia_default:
+                prov = source.provincia_default.strip()
+                if prov:
+                    already = {normalize_text(t) for t, _ in matched_tags}
+                    if normalize_text(prov) not in already:
+                        matched_tags.append((prov, "provincia"))
 
             if classify and not matched_tags and not import_untagged:
                 skipped_untagged += 1
@@ -602,10 +681,14 @@ async def retag_item(db: AsyncSession, item_id: int) -> models.FeedWebItem | Non
     )
 
 
-def _tema_clave(tema: str) -> str:
+def _tema_clave(tema: str, *, alcance: str = "pba") -> str:
     slug = normalize_text(tema).replace(" ", "_")
     slug = "".join(c for c in slug if c.isalnum() or c == "_")
-    return f"prensa_{slug}" if slug else "prensa_tema"
+    if not slug:
+        slug = "tema"
+    if alcance == "nacional":
+        return f"prensa_nac_{slug}"
+    return f"prensa_{slug}"
 
 
 def _item_effective_at(item: models.FeedWebItem) -> datetime | None:
@@ -628,15 +711,19 @@ async def aggregate_agenda(
     min_score: float = 2.0,
     min_municipios: int = 2,
     require_variance: bool = True,
+    alcance: str = "pba",
 ) -> dict[str, Any]:
-    """Agrega pares municipio×tema del corpus en la ventana.
+    """Agrega pares geo×tema del corpus en la ventana.
 
-    Filtros de calidad (evitan métricas planas 1–1 en el mapa):
-    - min_score: no publica el par si el valor es menor
-    - min_municipios: descarta el tema si quedan menos municipios
-    - require_variance: descarta el tema si min(valor)==max(valor)
+    alcance=pba → tags municipio → dimension Partido → claves prensa_*
+    alcance=nacional → tags provincia → dimension Provincia → claves prensa_nac_*
     """
     from decimal import Decimal
+
+    alcance_n = "nacional" if alcance == "nacional" else "pba"
+    geo_tag_tipo = "provincia" if alcance_n == "nacional" else "municipio"
+    geo_nivel = "Provincia" if alcance_n == "nacional" else "Partido"
+    geo_label_word = "provincia" if alcance_n == "nacional" else "municipio"
 
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=window_days)
@@ -649,10 +736,9 @@ async def aggregate_agenda(
     )
     items = list(result.scalars().unique().all())
 
-    # tema -> municipio_norm -> score
     scores: dict[str, dict[str, float]] = {}
     tema_label: dict[str, str] = {}
-    muni_label: dict[str, str] = {}
+    geo_label: dict[str, str] = {}
     items_used = 0
 
     for item in items:
@@ -663,26 +749,26 @@ async def aggregate_agenda(
             when = when.replace(tzinfo=timezone.utc)
         if when < cutoff:
             continue
-        municipios = [t for t in (item.tags or []) if (t.tipo or "") == "municipio"]
+        geos = [t for t in (item.tags or []) if (t.tipo or "") == geo_tag_tipo]
         temas = [t for t in (item.tags or []) if (t.tipo or "") == "tema"]
-        if not municipios or not temas:
+        if not geos or not temas:
             continue
         items_used += 1
         age_days = (now - when).total_seconds() / 86400.0
         weight = 1.0 if score_mode == "count" else _recency_weight(age_days, window_days)
         if weight <= 0:
             continue
-        for muni in municipios:
-            m_norm = normalize_text(muni.texto)
-            muni_label[m_norm] = muni.texto
+        for geo_tag in geos:
+            g_norm = normalize_text(geo_tag.texto)
+            geo_label[g_norm] = geo_tag.texto
             for tema in temas:
                 t_norm = normalize_text(tema.texto)
                 tema_label[t_norm] = tema.texto
-                by_muni = scores.setdefault(t_norm, {})
-                by_muni[m_norm] = by_muni.get(m_norm, 0.0) + weight
+                by_geo = scores.setdefault(t_norm, {})
+                by_geo[g_norm] = by_geo.get(g_norm, 0.0) + weight
 
     geo_result = await db.execute(
-        select(models.Dimension_Geografica).where(models.Dimension_Geografica.nivel == "Partido")
+        select(models.Dimension_Geografica).where(models.Dimension_Geografica.nivel == geo_nivel)
     )
     geo_by_norm = {normalize_text(g.nombre): g for g in geo_result.scalars().all()}
 
@@ -692,12 +778,12 @@ async def aggregate_agenda(
     resolved_pairs = 0
     facts: dict[str, list[dict[str, Any]]] = {}
 
-    for t_norm, by_muni in scores.items():
+    for t_norm, by_geo in scores.items():
         rows: list[dict[str, Any]] = []
-        for m_norm, valor in by_muni.items():
-            geo = geo_by_norm.get(m_norm)
+        for g_norm, valor in by_geo.items():
+            geo = geo_by_norm.get(g_norm)
             if not geo:
-                label = muni_label.get(m_norm, m_norm)
+                label = geo_label.get(g_norm, g_norm)
                 if label not in unresolved:
                     unresolved.append(label)
                 continue
@@ -708,7 +794,7 @@ async def aggregate_agenda(
             rows.append(
                 {
                     "geografia_id": geo.id,
-                    "municipio": muni_label.get(m_norm, geo.nombre),
+                    "geo_nombre": geo_label.get(g_norm, geo.nombre),
                     "valor": rounded,
                 }
             )
@@ -719,7 +805,10 @@ async def aggregate_agenda(
             skipped_temas.append(
                 {
                     "tema": tema_name,
-                    "reason": f"solo {len(rows)} municipio(s) con score≥{min_score} (mín. {min_municipios})",
+                    "reason": (
+                        f"solo {len(rows)} {geo_label_word}(s) con score≥{min_score} "
+                        f"(mín. {min_municipios})"
+                    ),
                     "municipios": len(rows),
                 }
             )
@@ -742,11 +831,12 @@ async def aggregate_agenda(
         "min_score": min_score,
         "min_municipios": min_municipios,
         "require_variance": require_variance,
+        "alcance": alcance_n,
         "items_used": items_used,
         "temas": [
             {
                 "tema": tema_label[t],
-                "clave": _tema_clave(tema_label[t]),
+                "clave": _tema_clave(tema_label[t], alcance=alcance_n),
                 "municipios": len(facts[t]),
                 "valor_min": min(r["valor"] for r in facts[t]),
                 "valor_max": max(r["valor"] for r in facts[t]),
@@ -771,6 +861,7 @@ async def publish_agenda(
     min_score: float = 2.0,
     min_municipios: int = 2,
     require_variance: bool = True,
+    alcance: str = "pba",
 ) -> dict[str, Any]:
     """Publica/actualiza métricas genéricas por tema (idempotente por nombre_clave)."""
     from datetime import date
@@ -778,6 +869,7 @@ async def publish_agenda(
 
     from models import EstadoProcesamiento, TipoMetrica
 
+    alcance_n = "nacional" if alcance == "nacional" else "pba"
     window_days = max(1, min(int(window_days), 90))
     agg = await aggregate_agenda(
         db,
@@ -786,25 +878,30 @@ async def publish_agenda(
         min_score=min_score,
         min_municipios=min_municipios,
         require_variance=require_variance,
+        alcance=alcance_n,
     )
     facts: dict[str, list[dict[str, Any]]] = agg["_facts"]
     tema_label: dict[str, str] = agg["_tema_label"]
     published_claves: set[str] = set()
+    geo_field = "provincia" if alcance_n == "nacional" else "municipio"
+    scope_label = "nacional" if alcance_n == "nacional" else "PBA"
 
     if not facts:
-        # Limpiar hechos viejos de agenda para no dejar métricas planas 1–1 activas.
-        cleared = await _clear_stale_prensa_hechos(db, keep_claves=set())
+        cleared = await _clear_stale_prensa_hechos(
+            db, keep_claves=set(), alcance=alcance_n
+        )
         await db.commit()
         return {
             "ok": False,
             "error": (
                 "Nada publicó con los umbrales actuales. "
-                "Subí menciones (min score) o bajá «mín. municipios»."
+                f"Subí menciones (min score) o bajá «mín. {geo_field}s»."
             ),
             "window_days": window_days,
             "score": agg["score"],
             "min_score": agg["min_score"],
             "min_municipios": agg["min_municipios"],
+            "alcance": alcance_n,
             "items_used": agg["items_used"],
             "metricas": [],
             "hechos": 0,
@@ -817,11 +914,11 @@ async def publish_agenda(
 
     fecha_dato = date.today()
     archivo = models.Archivo(
-        nombre_visible=f"Feed web agenda {window_days}d ({agg['score']})",
-        nombre_archivo_original="feed_web_agenda",
+        nombre_visible=f"Feed web agenda {scope_label} {window_days}d ({agg['score']})",
+        nombre_archivo_original=f"feed_web_agenda_{alcance_n}",
         descripcion=(
-            f"Agregado tema×municipio; min_score={agg['min_score']}, "
-            f"min_municipios={agg['min_municipios']}"
+            f"Agregado tema×{geo_field}; alcance={alcance_n}; "
+            f"min_score={agg['min_score']}, min_geos={agg['min_municipios']}"
         ),
         estado=EstadoProcesamiento.COMPLETADO,
     )
@@ -835,9 +932,10 @@ async def publish_agenda(
 
     for t_norm, rows in facts.items():
         tema = tema_label[t_norm]
-        clave = _tema_clave(tema)
+        clave = _tema_clave(tema, alcance=alcance_n)
         published_claves.add(clave)
-        amigable = f"Prensa · {tema} ({window_days}d)"
+        prefix = "Prensa nac." if alcance_n == "nacional" else "Prensa"
+        amigable = f"{prefix} · {tema} ({window_days}d)"
         vals = [r["valor"] for r in rows]
 
         metric_result = await db.execute(
@@ -887,8 +985,9 @@ async def publish_agenda(
                     dimension_extra={
                         "origen": "feed_web",
                         "preset": "que_se_esta_diciendo",
+                        "alcance": alcance_n,
                         "tema": tema,
-                        "municipio": row["municipio"],
+                        geo_field: row["geo_nombre"],
                         "window_days": window_days,
                         "score": agg["score"],
                     },
@@ -913,9 +1012,13 @@ async def publish_agenda(
             f"{clave}: {len(rows)} hechos rango {min(vals)}–{max(vals)} (reemplazados {replaced})"
         )
 
-    cleared = await _clear_stale_prensa_hechos(db, keep_claves=published_claves)
+    cleared = await _clear_stale_prensa_hechos(
+        db, keep_claves=published_claves, alcance=alcance_n
+    )
     if cleared:
-        log_lines.append(f"Limpiadas {cleared} métricas prensa_* fuera de este publish")
+        log_lines.append(
+            f"Limpiadas {cleared} métricas {('prensa_nac_*' if alcance_n == 'nacional' else 'prensa_*')} fuera de este publish"
+        )
 
     for skip in agg["skipped_temas"]:
         log_lines.append(f"Omitido {skip['tema']}: {skip['reason']}")
@@ -923,7 +1026,8 @@ async def publish_agenda(
         log_lines.append(f"Pares bajo min_score: {agg['skipped_low_score']}")
     if agg["unresolved_municipios"]:
         log_lines.append(
-            "Municipios sin geo: " + ", ".join(agg["unresolved_municipios"][:20])
+            f"{geo_field.capitalize()}s sin geo: "
+            + ", ".join(agg["unresolved_municipios"][:20])
         )
 
     archivo.filas_procesadas = total_hechos
@@ -937,6 +1041,7 @@ async def publish_agenda(
         "score": agg["score"],
         "min_score": agg["min_score"],
         "min_municipios": agg["min_municipios"],
+        "alcance": alcance_n,
         "items_used": agg["items_used"],
         "archivo_id": archivo.id,
         "metricas": published,
@@ -950,14 +1055,31 @@ async def publish_agenda(
     }
 
 
-async def _clear_stale_prensa_hechos(db: AsyncSession, keep_claves: set[str]) -> int:
-    """Borra hechos de métricas prensa_* que no entraron en este publish."""
+async def _clear_stale_prensa_hechos(
+    db: AsyncSession,
+    keep_claves: set[str],
+    *,
+    alcance: str = "pba",
+) -> int:
+    """Borra hechos de métricas prensa del alcance que no entraron en este publish.
+
+    PBA: claves prensa_* excepto prensa_nac_*
+    Nacional: solo prensa_nac_*
+    """
     result = await db.execute(
         select(models.Metricas).where(models.Metricas.nombre_clave.like("prensa_%"))
     )
     cleared = 0
     for metric in result.scalars().all():
-        if metric.nombre_clave in keep_claves:
+        clave = metric.nombre_clave or ""
+        is_nac = clave.startswith("prensa_nac_")
+        if alcance == "nacional":
+            if not is_nac:
+                continue
+        else:
+            if is_nac:
+                continue
+        if clave in keep_claves:
             continue
         del_result = await db.execute(
             delete(models.Hechos_Datos).where(models.Hechos_Datos.metrica_id == metric.id)

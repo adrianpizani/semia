@@ -33,6 +33,7 @@ def _source_out(s) -> FeedSourceOut:
         url=s.url,
         activa=s.activa,
         municipio_default=s.municipio_default,
+        provincia_default=s.provincia_default,
         ultimo_fetch_at=s.ultimo_fetch_at.isoformat() if s.ultimo_fetch_at else None,
         ultimo_error=s.ultimo_error,
     )
@@ -88,6 +89,7 @@ async def post_source(
             body.url,
             body.activa,
             municipio_default=body.municipio_default,
+            provincia_default=body.provincia_default,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No se pudo crear la fuente: {exc}") from exc
@@ -103,6 +105,7 @@ async def patch_source(
 ):
     payload = body.model_dump(exclude_unset=True)
     clear_muni = "municipio_default" in payload and payload.get("municipio_default") is None
+    clear_prov = "provincia_default" in payload and payload.get("provincia_default") is None
     source = await fws.update_source(
         db,
         source_id,
@@ -111,6 +114,8 @@ async def patch_source(
         activa=payload.get("activa"),
         municipio_default=payload.get("municipio_default"),
         clear_municipio_default=clear_muni,
+        provincia_default=payload.get("provincia_default"),
+        clear_provincia_default=clear_prov,
     )
     if not source:
         raise HTTPException(status_code=404, detail="Fuente no encontrada")
@@ -136,6 +141,18 @@ async def seed_local_sources(
 ):
     """Importa medios locales con RSS verificado + municipio_default."""
     result = await fws.seed_local_sources(db)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "Error al seed")
+    return result
+
+
+@router.post("/sources/seed-provinciales")
+async def seed_provincial_sources(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Importa medios provinciales (2× provincia) + provincia_default."""
+    result = await fws.seed_provincial_sources(db)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error") or "Error al seed")
     return result
@@ -180,6 +197,7 @@ async def publish_agenda(
     _admin=Depends(require_admin),
 ):
     score = body.score if body.score in ("count", "recency") else "count"
+    alcance = body.alcance if body.alcance in ("pba", "nacional") else "pba"
     result = await fws.publish_agenda(
         db,
         window_days=body.window_days,
@@ -187,6 +205,7 @@ async def publish_agenda(
         min_score=body.min_score,
         min_municipios=body.min_municipios,
         require_variance=body.require_variance,
+        alcance=alcance,
     )
     return FeedWebAgendaPublishResult.model_validate(result)
 

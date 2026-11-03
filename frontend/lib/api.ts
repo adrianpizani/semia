@@ -505,6 +505,7 @@ export interface FeedSource {
   url: string
   activa: boolean
   municipio_default?: string | null
+  provincia_default?: string | null
   ultimo_fetch_at?: string | null
   ultimo_error?: string | null
 }
@@ -567,6 +568,7 @@ export const createFeedWebSource = async (body: {
   url: string
   activa?: boolean
   municipio_default?: string | null
+  provincia_default?: string | null
 }): Promise<FeedSource> => {
   const response = await apiFetch('/feeds/web/sources', {
     method: 'POST',
@@ -579,7 +581,13 @@ export const createFeedWebSource = async (body: {
 
 export const updateFeedWebSource = async (
   id: number,
-  body: { nombre?: string; url?: string; activa?: boolean; municipio_default?: string | null },
+  body: {
+    nombre?: string
+    url?: string
+    activa?: boolean
+    municipio_default?: string | null
+    provincia_default?: string | null
+  },
 ): Promise<FeedSource> => {
   const response = await apiFetch(`/feeds/web/sources/${id}`, {
     method: 'PATCH',
@@ -603,6 +611,17 @@ export const seedFeedWebLocalSources = async (): Promise<{
 }> => {
   const response = await apiFetch('/feeds/web/sources/seed-locals', { method: 'POST' });
   await throwIfNotOk(response, 'No se pudieron importar medios locales');
+  return await response.json();
+};
+
+export const seedFeedWebProvincialSources = async (): Promise<{
+  ok: boolean
+  created: number
+  updated: number
+  total_file: number
+}> => {
+  const response = await apiFetch('/feeds/web/sources/seed-provinciales', { method: 'POST' });
+  await throwIfNotOk(response, 'No se pudieron importar medios provinciales');
   return await response.json();
 };
 
@@ -753,6 +772,7 @@ export interface FeedWebAgendaPublishResult {
   score: string
   min_score?: number
   min_municipios?: number
+  alcance?: string
   items_used: number
   archivo_id?: number | null
   metricas: FeedWebAgendaMetrica[]
@@ -772,6 +792,7 @@ export const publishFeedWebAgenda = async (body?: {
   min_score?: number
   min_municipios?: number
   require_variance?: boolean
+  alcance?: 'pba' | 'nacional'
 }): Promise<FeedWebAgendaPublishResult> => {
   const response = await apiFetch('/feeds/web/publish-agenda', {
     method: 'POST',
@@ -782,6 +803,7 @@ export const publishFeedWebAgenda = async (body?: {
       min_score: body?.min_score ?? 2,
       min_municipios: body?.min_municipios ?? 2,
       require_variance: body?.require_variance ?? true,
+      alcance: body?.alcance ?? 'pba',
     }),
   });
   await throwIfNotOk(response, 'No se pudo publicar la agenda al mapa');
